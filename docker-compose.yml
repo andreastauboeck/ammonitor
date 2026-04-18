@@ -1,0 +1,11 @@
+services:
+  ammonitor:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./.env
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-dev}
+      - VERSION=${VERSION:-development}
+    restart: unless-stopped

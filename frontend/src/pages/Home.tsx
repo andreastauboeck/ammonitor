@@ -1,7 +1,19 @@
 import { useEffect, useState, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
+import type { Map } from 'leaflet'
+import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import * as React from "react";
+
+const customIcon = L.icon({
+  iconUrl: '/marker-icon.png',
+  shadowUrl: '/marker-shadow.png',
+  iconSize: [150, 150],
+  iconAnchor: [75, 115],
+  popupAnchor: [1, -100],
+  shadowSize: [150, 150],
+  shadowAnchor: [50, 140],
+})
 
 interface BackendStatus {
   status: string
@@ -29,7 +41,7 @@ function MapClickHandler({ onLocationSelect }: { onLocationSelect: (loc: Locatio
   return null
 }
 
-function App() {
+export default function Home() {
   const [connectionState, setConnectionState] = useState<ConnectionState>({
     kind: 'loading',
   })
@@ -37,7 +49,25 @@ function App() {
   const [address, setAddress] = useState('')
   const [location, setLocation] = useState<Location | null>(null)
   const [isGeocoding, setIsGeocoding] = useState(false)
-  const mapRef = useRef<unknown>(null)
+  const mapRef = useRef<Map | null>(null)
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    const latParam = searchParams.get('lat')
+    const lngParam = searchParams.get('lng')
+
+    if (latParam && lngParam) {
+      const lat = parseFloat(latParam)
+      const lng = parseFloat(lngParam)
+      if (!isNaN(lat) && !isNaN(lng)) {
+        setLocation({ lat, lng })
+        setTimeout(() => {
+          mapRef.current?.flyTo([lat, lng], 13)
+        }, 100)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -63,6 +93,11 @@ function App() {
     return () => controller.abort()
   }, [])
 
+  const handleLocationChange = (newLocation: Location) => {
+    setLocation(newLocation)
+    setSearchParams({ lat: newLocation.lat.toString(), lng: newLocation.lng.toString() })
+  }
+
   const handleGeocode = async () => {
     if (!address.trim()) return
     setIsGeocoding(true)
@@ -77,6 +112,7 @@ function App() {
           lng: parseFloat(data[0].lon),
         }
         setLocation(newLocation)
+        setSearchParams({ lat: newLocation.lat.toString(), lng: newLocation.lng.toString() })
         mapRef.current?.flyTo([newLocation.lat, newLocation.lng], 13)
       }
     } catch (err) {
@@ -92,6 +128,12 @@ function App() {
     }
   }
 
+  const handleStartCalculation = () => {
+    if (location) {
+      navigate(`/calculate/${location.lat}/${location.lng}`)
+    }
+  }
+
   const statusColor =
     connectionState.kind === 'connected'
       ? 'bg-green-400'
@@ -103,7 +145,7 @@ function App() {
     <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-6">
       <div className="max-w-xl w-full bg-slate-800 rounded-2xl shadow-xl p-8 border border-slate-700">
         <h1 className="text-4xl font-bold mb-2">Ammonitor</h1>
-        <p className="text-slate-400 mb-4">Geben Sie eine Adresse ein, um die Position zu finden.</p>
+        <p className="text-slate-400 mb-4">Enter an address or click on the map to select a location.</p>
 
         <div className="flex gap-2 mb-4">
           <input
@@ -134,8 +176,8 @@ function App() {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <MapClickHandler onLocationSelect={(loc) => setLocation(loc)} />
-            {location && <Marker position={[location.lat, location.lng]} />}
+            <MapClickHandler onLocationSelect={handleLocationChange} />
+            {location && <Marker position={[location.lat, location.lng]} icon={customIcon} />}
           </MapContainer>
         </div>
 
@@ -143,6 +185,15 @@ function App() {
           <p className="text-sm text-slate-400 mb-4">
             Selected: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
           </p>
+        )}
+
+        {location && (
+          <button
+            onClick={handleStartCalculation}
+            className="w-full mb-4 px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition-colors font-medium"
+          >
+            Start Calculation
+          </button>
         )}
 
         <button
@@ -210,5 +261,3 @@ function App() {
     </div>
   )
 }
-
-export default App

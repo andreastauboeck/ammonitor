@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Docker Compose" type="ExternalToolConfigurationType" folderName="ammonitor">
+    <extension name="schemaVersion" value="2.0" />
+    <toolOutput type="CONSOLE" shownOn="Execution" />
+    <toolArguments>compose up -d</toolArguments>
+    <program>docker</program>
+    <workingDirectory>$PROJECT_DIR$</workingDirectory>
+    <envs />
+    <method v="2" />
+  </configuration>
+</component>
