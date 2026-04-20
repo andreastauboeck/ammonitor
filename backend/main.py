@@ -6,10 +6,15 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from run_alfam2 import run_alfam2
+from weather import fetch_weather
 
 VERSION = os.getenv("VERSION", "0.1.0")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
@@ -17,9 +22,22 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
 app = FastAPI(title="ammonitor API", version=VERSION)
 
 
+class CalculateInput(BaseModel):
+    lat: float
+    lng: float
+    tan_app: float = Field(..., description="TAN applied (kg/ha)")
+    man_dm: float = Field(..., description="Manure dry matter (%)")
+    man_ph: float = Field(..., description="Manure pH")
+    man_source: Literal["cattle", "pig"] = "cattle"
+    incorp: Literal["none", "shallow", "deep"] = "none"
+    incorp_time: float = Field(
+        0.5, description="Time after application when incorporation occurs (hours)"
+    )
+    timezone: str = Field("auto", description="IANA timezone name or 'auto'")
+
+
 @app.get("/api/status")
 def get_status() -> dict[str, str]:
-    """Return the current status of the backend."""
     return {
         "status": "ok",
         "version": VERSION,
@@ -27,12 +45,49 @@ def get_status() -> dict[str, str]:
     }
 
 
+@app.post("/api/calculate")
+def calculate(input_data: CalculateInput) -> dict:
+    """Run ALFAM2 calculation for 7 scenarios x 5 techniques."""
+    try:
+        weather = fetch_weather(input_data.lat, input_data.lng, input_data.timezone)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Weather fetch failed: {e}")
+
+    hourly = weather["hourly"]
+    daily_starts = weather["daily_starts"]
+
+    try:
+        # app_rate does not affect ALFAM2 (parameter set 3 has no app.rate.ni
+        # coefficient). We pass a fixed reference value internally.
+        result = run_alfam2(
+            tan_app=input_data.tan_app,
+            man_dm=input_data.man_dm,
+            man_ph=input_data.man_ph,
+            man_source=input_data.man_source,
+            app_rate=30.0,
+            incorp=input_data.incorp,
+            incorp_time=input_data.incorp_time,
+            weather_hourly=hourly,
+            start_dates_iso=daily_starts,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Calculation failed: {e}")
+
+    result["timezone"] = weather.get("timezone")
+    result["weather"] = hourly
+    # Echo back the incorporation setup so the frontend can draw a marker
+    result["incorp"] = (
+        {"mode": input_data.incorp, "time_h": input_data.incorp_time}
+        if input_data.incorp != "none"
+        else None
+    )
+    return result
+
+
 # Serve the built frontend if present (production mode).
-# The Dockerfile copies the Vite build output to ./frontend/dist.
 _FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
 
 if _FRONTEND_DIST.is_dir():
-    # Mount the assets directory produced by Vite.
     _ASSETS_DIR = _FRONTEND_DIST / "assets"
     if _ASSETS_DIR.is_dir():
         app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
@@ -43,7 +98,6 @@ if _FRONTEND_DIST.is_dir():
 
     @app.get("/{full_path:path}")
     def serve_spa(full_path: str) -> FileResponse:
-        """Serve index.html for any non-API route so React Router works."""
         candidate = _FRONTEND_DIST / full_path
         if candidate.is_file():
             return FileResponse(candidate)
