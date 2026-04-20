@@ -49,8 +49,8 @@ jobs:
 
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
-        with:
-          flyctl-api-token: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Deploy app
-        run: fly deploy --app ammonitor --image ${{ steps.meta.outputs.tags }}
+        run: fly deploy --image ${{ steps.meta.outputs.tags }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
