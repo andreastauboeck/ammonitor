@@ -10,13 +10,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     gnupg \
     software-properties-common \
+    r-base \
+    r-base-dev \
+    r-recommended \
+    libblas3 \
+    liblapack3 \
     && rm -rf /var/lib/apt/lists/*
-
-RUN wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | apt-key add - \
-    && add-apt-repository "deb https://cloud.r-project.org/bin/linux/ubuntu bookworm-cran40/" \
-    && apt-get update
-
-RUN apt-get install -y --no-install-recommends r-base r-base-dev && rm -rf /var/lib/apt/lists/*
 
 RUN R -e "install.packages('ALFAM2', repos='https://cloud.r-project.org/')"
 
@@ -34,9 +33,9 @@ COPY frontend/ ./
 RUN npm run build
 
 # -----------------------------------------------------------------------------
-# Stage 3: Runtime (final stage)
+# Stage 3: Runtime (final stage) - use same debian base for R compatibility
 # -----------------------------------------------------------------------------
-FROM python:3.12-slim-bookworm AS runtime
+FROM debian:bookworm-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -45,8 +44,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Copy R installation from r-base stage (cached, rarely changes)
+# Install Python + copy complete R from r-base
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    libblas3 \
+    liblapack3 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=r-base /usr /usr
+COPY --from=r-base /etc /etc
 
 # Install Python dependencies.
 COPY backend/requirements.txt ./
@@ -60,4 +67,4 @@ COPY --from=frontend-build /app/dist ./frontend/dist
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python3", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
