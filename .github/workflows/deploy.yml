@@ -50,7 +50,11 @@ jobs:
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Get image tag
+        id: image
+        run: echo "tag=$(echo '${{ steps.meta.outputs.tags }}' | head -1)" >> "$GITHUB_OUTPUT"
+
       - name: Deploy app
-        run: flyctl deploy --app ammonitor --image ${{ steps.meta.outputs.tags }}
+        run: flyctl deploy --app ammonitor --image "${{ steps.image.outputs.tag }}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
