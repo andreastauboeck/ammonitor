@@ -21,6 +21,7 @@ interface FormData {
   manDm: number
   manPh: number
   manSource: 'cattle' | 'pig'
+  applicationTime: '06:00' | '14:00' | '18:00'
   incorpTime: number | null // null = no incorporation
   incorp: 'shallow' | 'deep'
 }
@@ -51,16 +52,9 @@ interface WeatherPoint {
   rain_rate: number // mm/h
 }
 
-interface IncorpInfo {
-  mode: 'shallow' | 'deep'
-  time_h: number
-}
-
 interface ApiResponse {
   scenarios: ScenarioData[]
   weather: WeatherPoint[]
-  timezone?: string
-  incorp?: IncorpInfo | null
 }
 
 // Fixed Y-axis range for rain (mm/h) in the weather chart
@@ -193,6 +187,7 @@ export default function Calculation() {
     manDm: 6,
     manPh: 7.5,
     manSource: 'cattle',
+    applicationTime: '14:00',
     incorpTime: null,
     incorp: 'shallow',
   })
@@ -237,6 +232,7 @@ export default function Calculation() {
         man_dm: formData.manDm,
         man_ph: formData.manPh,
         man_source: formData.manSource,
+        application_time: formData.applicationTime,
         // Only send incorporation info when a time has been set; otherwise
         // no incorporation is performed.
         incorp:
@@ -268,6 +264,7 @@ export default function Calculation() {
     formData.manDm,
     formData.manPh,
     formData.manSource,
+    formData.applicationTime,
     formData.incorp,
     formData.incorpTime,
   ])
@@ -391,12 +388,15 @@ export default function Calculation() {
   // Chart rows are hourly (ct = 1..168). Round incorp_time up to the next integer
   // hour to pick the closest existing row (ct=0 isn't in the data).
   const incorpMarker = useMemo(() => {
-    if (!data?.incorp) return null
-    const targetCt = Math.max(1, Math.ceil(data.incorp.time_h))
+    if (formData.incorpTime === null) return null
+    const targetCt = Math.max(1, Math.ceil(formData.incorpTime))
     const row = (detailData as any[]).find((r) => r.ct === targetCt)
     if (!row) return null
-    return { label: row.label as string, info: data.incorp }
-  }, [data, detailData])
+    return {
+      label: row.label as string,
+      info: { mode: formData.incorp, time_h: formData.incorpTime },
+    }
+  }, [detailData, formData.incorp, formData.incorpTime])
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6">
@@ -526,6 +526,21 @@ export default function Calculation() {
                 >
                   <option value="cattle">Cattle</option>
                   <option value="pig">Pig</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">
+                  Application time
+                </label>
+                <select
+                  name="applicationTime"
+                  value={formData.applicationTime}
+                  onChange={handleChange}
+                  className="w-full px-2 py-1.5 text-sm rounded-lg bg-slate-700 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="06:00">06:00 (morning)</option>
+                  <option value="14:00">14:00 (afternoon)</option>
+                  <option value="18:00">18:00 (evening)</option>
                 </select>
               </div>
               <div>

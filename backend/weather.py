@@ -9,11 +9,11 @@ import urllib.request
 from threading import Lock
 
 # How many days of hourly forecast we need:
-# For 7 scenarios (day 0..6) each spanning 7 days (168 h), we need
-# data from day 0 hour 0 up to day 6 + 7 days = day 13 = 13 * 24 = 312 hours.
-# We fetch 14 days (336 hours) to be safe for application time variation to come.
+# For 7 scenarios (day 0..6) each spanning 7 days (168 h), and an application
+# hour up to 23, we need at most 6*24 + 23 + 168 = 335 hours. Fetch 14 days
+# (336 hours) to cover this with a small buffer.
 FORECAST_DAYS = 14
-HOURS_NEEDED = 13 * 24  # 312
+HOURS_NEEDED = 6 * 24 + 23 + 168  # 335
 
 # Cache TTL in seconds (10 minutes)
 CACHE_TTL = 600
@@ -33,8 +33,7 @@ def fetch_weather(lat: float, lng: float, timezone_name: str = "auto") -> dict:
         "hourly": [
             {"time_iso": "2026-04-20T00:00", "air_temp": 12.3, "wind_speed": 3.1, "rain_rate": 0.0},
             ...
-        ],
-        "daily_starts": ["2026-04-20T00:00", "2026-04-21T00:00", ...]
+        ]
     }
 
     Raises RuntimeError if the fetch fails.
@@ -107,26 +106,8 @@ def _fetch_from_open_meteo(lat: float, lng: float, timezone_name: str) -> dict:
             }
         )
 
-    # Extract the timestamp at 00:00 of each of the first 7 days
-    daily_starts: list[str] = []
-    seen_dates: set[str] = set()
-    for h in out_hourly:
-        t_iso = h["time_iso"]
-        # Expected format "YYYY-MM-DDTHH:MM"
-        date_part = t_iso.split("T")[0]
-        if date_part not in seen_dates:
-            seen_dates.add(date_part)
-            # Use the 00:00 of the day if available, else the first hour of that day
-            midnight_iso = f"{date_part}T00:00"
-            # If the first encountered entry is not midnight, still use midnight as day start
-            daily_starts.append(midnight_iso)
-        if len(daily_starts) >= 7:
-            break
-
     return {
         "hourly": out_hourly,
-        "daily_starts": daily_starts,
-        "timezone": payload.get("timezone"),
     }
 
 

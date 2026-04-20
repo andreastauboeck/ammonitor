@@ -5,6 +5,7 @@ Serves the API at /api/* and, in production, the built React frontend at /.
 from __future__ import annotations
 
 import os
+from datetime import datetime, time as dt_time, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -29,11 +30,12 @@ class CalculateInput(BaseModel):
     man_dm: float = Field(..., description="Manure dry matter (%)")
     man_ph: float = Field(..., description="Manure pH")
     man_source: Literal["cattle", "pig"] = "cattle"
+    application_time: Literal["06:00", "14:00", "18:00"] = "14:00"
     incorp: Literal["none", "shallow", "deep"] = "none"
     incorp_time: float = Field(
         0.5, description="Time after application when incorporation occurs (hours)"
     )
-    timezone: str = Field("auto", description="IANA timezone name or 'auto'")
+    timezone: str = Field("auto", description="IANA timezone name for weather")
 
 
 @app.get("/api/status")
@@ -53,35 +55,39 @@ def calculate(input_data: CalculateInput) -> dict:
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Weather fetch failed: {e}")
 
-    hourly = weather["hourly"]
-    daily_starts = weather["daily_starts"]
+    # Compute daily_starts: for each of 7 days, the start timestamp of the
+    # scenario (application time). The first weather hour is at 00:00 of day 0.
+    first_hour_iso = weather["hourly"][0]["time_iso"]
+    first_date = datetime.fromisoformat(first_hour_iso).date()
+    app_hour = int(input_data.application_time.split(":")[0])
 
-    try:
-        # app_rate does not affect ALFAM2 (parameter set 3 has no app.rate.ni
-        # coefficient). We pass a fixed reference value internally.
-        result = run_alfam2(
-            tan_app=input_data.tan_app,
-            man_dm=input_data.man_dm,
-            man_ph=input_data.man_ph,
-            man_source=input_data.man_source,
-            app_rate=30.0,
-            incorp=input_data.incorp,
-            incorp_time=input_data.incorp_time,
-            weather_hourly=hourly,
-            start_dates_iso=daily_starts,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Calculation failed: {e}")
+    daily_starts = [
+        datetime.combine(
+            first_date + timedelta(days=i), dt_time(hour=app_hour)
+        ).isoformat(timespec="minutes")
+        for i in range(7)
+    ]
 
-    result["timezone"] = weather.get("timezone")
-    result["weather"] = hourly
-    # Echo back the incorporation setup so the frontend can draw a marker
-    result["incorp"] = (
-        {"mode": input_data.incorp, "time_h": input_data.incorp_time}
-        if input_data.incorp != "none"
-        else None
+    # app_rate does not affect ALFAM2 (parameter set 3 has no app.rate.ni
+    # coefficient). We pass a fixed reference value internally.
+    result = run_alfam2(
+        tan_app=input_data.tan_app,
+        man_dm=input_data.man_dm,
+        man_ph=input_data.man_ph,
+        man_source=input_data.man_source,
+        app_rate=30.0,
+        incorp=input_data.incorp,
+        incorp_time=input_data.incorp_time,
+        application_hour=app_hour,
+        weather_hourly=weather["hourly"],
+        start_dates_iso=daily_starts,
     )
-    return result
+
+    # Return only what frontend needs: scenarios + weather
+    return {
+        "scenarios": result["scenarios"],
+        "weather": weather["hourly"],
+    }
 
 
 # Serve the built frontend if present (production mode).

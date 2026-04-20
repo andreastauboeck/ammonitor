@@ -44,6 +44,7 @@ def run_alfam2(
     app_rate: float,
     incorp: str,
     incorp_time: float,
+    application_hour: int,
     weather_hourly: list[dict],
     start_dates_iso: list[str],
 ) -> dict:
@@ -79,27 +80,18 @@ def run_alfam2(
             ]
         }
     """
-    try:
-        return _run_alfam2_r(
-            tan_app=tan_app,
-            man_dm=man_dm,
-            man_ph=man_ph,
-            man_source=man_source,
-            app_rate=app_rate,
-            incorp=incorp,
-            incorp_time=incorp_time,
-            weather_hourly=weather_hourly,
-            start_dates_iso=start_dates_iso,
-        )
-    except Exception as e:
-        print(f"Error running ALFAM2: {e}. Using fallback.")
-        return _generate_fallback(
-            tan_app=tan_app,
-            man_dm=man_dm,
-            man_ph=man_ph,
-            man_source=man_source,
-            start_dates_iso=start_dates_iso,
-        )
+    return _run_alfam2_r(
+        tan_app=tan_app,
+        man_dm=man_dm,
+        man_ph=man_ph,
+        man_source=man_source,
+        app_rate=app_rate,
+        incorp=incorp,
+        incorp_time=incorp_time,
+        application_hour=application_hour,
+        weather_hourly=weather_hourly,
+        start_dates_iso=start_dates_iso,
+    )
 
 
 def _run_alfam2_r(
@@ -110,14 +102,17 @@ def _run_alfam2_r(
     app_rate: float,
     incorp: str,
     incorp_time: float,
+    application_hour: int,
     weather_hourly: list[dict],
     start_dates_iso: list[str],
 ) -> dict:
     """Build CSV input, run R, parse output."""
-    if len(weather_hourly) < (N_SCENARIOS - 1) * 24 + SCENARIO_HOURS:
+    # Each scenario starts at (day_idx * 24 + application_hour) hours from weather[0],
+    # and spans SCENARIO_HOURS hours. The latest index needed is:
+    min_needed = (N_SCENARIOS - 1) * 24 + application_hour + SCENARIO_HOURS
+    if len(weather_hourly) < min_needed:
         raise ValueError(
-            f"Need at least {(N_SCENARIOS - 1) * 24 + SCENARIO_HOURS} hours of weather, "
-            f"got {len(weather_hourly)}"
+            f"Need at least {min_needed} hours of weather, got {len(weather_hourly)}"
         )
 
     # man.source: "pig" or "cattle" (reference)
@@ -140,6 +135,7 @@ def _run_alfam2_r(
             app_rate=app_rate,
             incorp=incorp_lc,
             incorp_time=incorp_time,
+            application_hour=application_hour,
             weather_hourly=weather_hourly,
         )
 
@@ -195,6 +191,7 @@ def _build_input_rows(
     app_rate: float,
     incorp: str,
     incorp_time: float,
+    application_hour: int,
     weather_hourly: list[dict],
 ) -> list[dict]:
     """Build the grouped input CSV rows.
@@ -209,7 +206,8 @@ def _build_input_rows(
     incorp_val = incorp if incorp != "none" else ""
 
     for day_idx in range(N_SCENARIOS):
-        start_hour = day_idx * 24
+        # Each scenario starts at midnight of day_idx + application_hour
+        start_hour = day_idx * 24 + application_hour
         for tech_code, tech_label in TECHNIQUES:
             # Unique scenario id combining day + technique
             scenario_id = f"d{day_idx}_{tech_code}"
@@ -244,6 +242,16 @@ def _build_input_rows(
                 )
 
     return rows
+
+
+def _safe_float(val) -> float:
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return 0.0
+        return f
+    except (ValueError, TypeError):
+        return 0.0
 
 
 def _parse_output(out_rows: list[dict], start_dates_iso: list[str]) -> dict:
@@ -298,77 +306,6 @@ def _parse_output(out_rows: list[dict], start_dates_iso: list[str]) -> dict:
     return {"scenarios": scenarios}
 
 
-def _safe_float(val) -> float:
-    try:
-        f = float(val)
-        if math.isnan(f) or math.isinf(f):
-            return 0.0
-        return f
-    except (ValueError, TypeError):
-        return 0.0
-
-
-def _generate_fallback(
-    tan_app: float,
-    man_dm: float,
-    man_ph: float,
-    man_source: str,
-    start_dates_iso: list[str],
-) -> dict:
-    """Generate fallback synthetic data when R is unavailable."""
-    # Base cumulative emission % per technique (approximate from docs examples)
-    base_pct = {
-        "Broadcast": 73.0,
-        "Trailing hose": 49.0,
-        "Trailing shoe": 35.0,
-        "Open slot": 21.0,
-        "Closed slot": 10.0,
-    }
-
-    dm_factor = 1 + (man_dm - 6) * 0.02
-    ph_factor = 1 + (man_ph - 7.5) * 0.05
-    src_factor = 0.9 if man_source.lower() == "pig" else 1.0
-
-    scenarios = []
-    for day_idx in range(N_SCENARIOS):
-        start_iso = start_dates_iso[day_idx] if day_idx < len(start_dates_iso) else ""
-        day_factor = 1.0 + (day_idx - 3) * 0.03  # small variation between days
-        techniques_out: dict[str, dict] = {}
-        for tech_label, base in base_pct.items():
-            final_pct = max(0.0, base * dm_factor * ph_factor * src_factor * day_factor)
-            # Exponential-ish cumulative curve
-            hourly = []
-            for ct in range(1, SCENARIO_HOURS + 1):
-                frac = 1 - math.exp(-ct / 40.0)
-                er = (final_pct / 100.0) * frac
-                e = er * tan_app
-                # approximate hourly flux
-                j = (final_pct / 100.0) * (math.exp(-(ct - 1) / 40.0) / 40.0) * tan_app
-                hourly.append(
-                    {
-                        "ct": ct,
-                        "e": round(e, 4),
-                        "er": round(er, 6),
-                        "j": round(j, 6),
-                    }
-                )
-            techniques_out[tech_label] = {
-                "final_loss_pct": round(hourly[-1]["er"] * 100.0, 2),
-                "final_loss_kg": round(hourly[-1]["e"], 4),
-                "hourly": hourly,
-            }
-
-        scenarios.append(
-            {
-                "day": day_idx,
-                "start": start_iso,
-                "techniques": techniques_out,
-            }
-        )
-
-    return {"scenarios": scenarios}
-
-
 if __name__ == "__main__":
     # Test run with fake weather
     fake_weather = [
@@ -386,6 +323,7 @@ if __name__ == "__main__":
         app_rate=30.0,
         incorp="none",
         incorp_time=0.5,
+        application_hour=0,
         weather_hourly=fake_weather,
         start_dates_iso=fake_dates,
     )
