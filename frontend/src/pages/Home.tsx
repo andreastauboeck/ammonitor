@@ -6,13 +6,13 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 const customIcon = L.icon({
-  iconUrl: '/marker-icon-small.png',
+  iconUrl: '/marker-icon.png',
   shadowUrl: '/marker-shadow.png',
-  iconSize: [48, 48],
-  iconAnchor: [24, 48],
-  popupAnchor: [0, -48],
-  shadowSize: [48, 48],
-  shadowAnchor: [14, 48],
+  iconSize: [150, 150],
+  iconAnchor: [75, 115],
+  popupAnchor: [0, -150],
+  shadowSize: [150, 150],
+  shadowAnchor: [44, 150],
 })
 
 interface BackendStatus {

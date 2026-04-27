@@ -57,9 +57,6 @@ interface ApiResponse {
   weather: WeatherPoint[]
 }
 
-// Fixed Y-axis range for rain (mm/h) in the weather chart
-const RAIN_AXIS_MAX = 5
-
 const TECHNIQUES = [
   'Broadcast',
   'Trailing hose',
@@ -393,7 +390,7 @@ export default function Calculation() {
     const row = (detailData as any[]).find((r) => r.ct === targetCt)
     if (!row) return null
     return {
-      label: row.label as string,
+      ct: targetCt,
       info: { mode: formData.incorp, time_h: formData.incorpTime },
     }
   }, [detailData, formData.incorp, formData.incorpTime])
@@ -663,9 +660,9 @@ export default function Calculation() {
                         fill: '#94a3b8',
                         fontSize: 11,
                       }}
-                    />
-                    <Tooltip
-                      content={
+                     />
+                     <Tooltip
+                       content={
                         <EmissionTooltip tanApp={formData.tanApp} />
                       }
                     />
@@ -692,10 +689,14 @@ export default function Calculation() {
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
                         <XAxis
-                          dataKey="label"
+                          dataKey="ct"
+                          type="number"
+                          scale="log"
+                          domain={[1, 168]}
+                          ticks={[1, 2, 4, 8, 24, 48, 96, 168]}
+                          tickFormatter={(ct: number) => formatTimeAxis(ct)}
                           stroke="#94a3b8"
                           tick={{ fontSize: 10 }}
-                          interval={23}
                         />
                         <YAxis
                           key={`detail-left-${detailMax}`}
@@ -703,13 +704,7 @@ export default function Calculation() {
                           stroke="#94a3b8"
                           tick={{ fontSize: 10 }}
                           domain={[0, detailMax]}
-                          label={{
-                            value: 'NH3 loss (% of TAN)',
-                            angle: -90,
-                            position: 'insideLeft',
-                            fill: '#94a3b8',
-                            fontSize: 11,
-                          }}
+                          label={{ value: 'NH3 loss (% of TAN)', angle: -90, position: 'insideLeft', fill: '#94a3b8', fontSize: 11 }}
                         />
                         <YAxis
                           key={`detail-right-${detailMax}-${formData.tanApp}`}
@@ -721,17 +716,18 @@ export default function Calculation() {
                           tickFormatter={(v: number) =>
                             ((v * formData.tanApp) / 100).toFixed(1)
                           }
-                          label={{
-                            value: 'NH3 loss (kg/ha)',
-                            angle: 90,
-                            position: 'insideRight',
-                            fill: '#94a3b8',
-                            fontSize: 11,
-                          }}
+                          label={{ value: 'NH3 loss (kg/ha)', angle: 90, position: 'insideRight', fill: '#94a3b8', fontSize: 11 }}
                         />
                         <Tooltip
                           content={
-                            <EmissionTooltip tanApp={formData.tanApp} />
+                            <EmissionTooltip
+                              tanApp={formData.tanApp}
+                              labelFormatter={(l: any) =>
+                                typeof l === 'number'
+                                  ? formatTimeAxis(l)
+                                  : String(l)
+                              }
+                            />
                           }
                         />
                         <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -749,7 +745,7 @@ export default function Calculation() {
                         {incorpMarker && (
                           <ReferenceLine
                             yAxisId="left"
-                            x={incorpMarker.label}
+                            x={incorpMarker.ct}
                             stroke="#fbbf24"
                             strokeDasharray="4 2"
                             strokeWidth={2}
@@ -774,10 +770,14 @@ export default function Calculation() {
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
                         <XAxis
-                          dataKey="label"
+                          dataKey="ct"
+                          type="number"
+                          scale="log"
+                          domain={[1, 168]}
+                          ticks={[1, 2, 4, 8, 24, 48, 96, 168]}
+                          tickFormatter={(ct: number) => formatTimeAxis(ct)}
                           stroke="#94a3b8"
                           tick={{ fontSize: 10 }}
-                          interval={23}
                           label={{
                             value: 'Time since application',
                             position: 'insideBottom',
@@ -803,7 +803,6 @@ export default function Calculation() {
                           orientation="right"
                           stroke="#94a3b8"
                           tick={{ fontSize: 10 }}
-                          domain={[0, RAIN_AXIS_MAX]}
                           label={{
                             value: 'Rain (mm/h)',
                             angle: 90,
@@ -819,13 +818,21 @@ export default function Calculation() {
                             borderRadius: '8px',
                           }}
                           labelStyle={{ color: '#e2e8f0' }}
+                          labelFormatter={(l: any) =>
+                            typeof l === 'number'
+                              ? formatTimeAxis(l)
+                              : String(l)
+                          }
                         />
                         <Legend wrapperStyle={{ fontSize: 11 }} />
-                        <Bar
+                        <Line
                           yAxisId="right"
+                          type="monotone"
                           dataKey="rain_rate"
                           name="Rain (mm/h)"
-                          fill="#3b82f6"
+                          stroke="#3b82f6"
+                          dot={false}
+                          strokeWidth={2}
                         />
                         <Line
                           yAxisId="left"
@@ -848,7 +855,7 @@ export default function Calculation() {
                         {incorpMarker && (
                           <ReferenceLine
                             yAxisId="left"
-                            x={incorpMarker.label}
+                            x={incorpMarker.ct}
                             stroke="#fbbf24"
                             strokeDasharray="4 2"
                             strokeWidth={2}
