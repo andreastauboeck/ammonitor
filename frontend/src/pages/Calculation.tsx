@@ -1,183 +1,20 @@
-import { useState, useEffect, useMemo } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  ComposedChart,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ReferenceLine,
-  ResponsiveContainer,
-} from 'recharts'
-
-
-interface FormData {
-  tanApp: number
-  manDm: number
-  manPh: number
-  manSource: 'cattle' | 'pig'
-  applicationTime: '06:00' | '14:00' | '18:00'
-  incorpTime: number | null // null = no incorporation
-  incorp: 'shallow' | 'deep'
-}
-
-interface HourlyPoint {
-  ct: number
-  e: number
-  er: number
-  j: number
-}
-
-interface TechniqueData {
-  final_loss_pct: number
-  final_loss_kg: number
-  hourly: HourlyPoint[]
-}
-
-interface ScenarioData {
-  day: number
-  start: string
-  techniques: Record<string, TechniqueData>
-}
-
-interface WeatherPoint {
-  time_iso: string
-  air_temp: number
-  wind_speed: number // m/s from API
-  rain_rate: number // mm/h
-}
-
-interface ApiResponse {
-  scenarios: ScenarioData[]
-  weather: WeatherPoint[]
-}
-
-const TECHNIQUES = [
-  'Broadcast',
-  'Trailing hose',
-  'Trailing shoe',
-  'Open slot',
-  'Closed slot',
-] as const
-
-const TECH_COLORS: Record<string, string> = {
-  'Broadcast': '#ef4444',
-  'Trailing hose': '#3b82f6',
-  'Trailing shoe': '#8b5cf6',
-  'Open slot': '#10b981',
-  'Closed slot': '#f59e0b',
-}
-
-function formatDayLabel(iso: string): string {
-  // iso like "2026-04-20T00:00"
-  try {
-    const d = new Date(iso)
-    if (isNaN(d.getTime())) return iso
-    return d.toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    })
-  } catch {
-    return iso
-  }
-}
-
-function formatTimeAxis(ct: number): string {
-  // ct is hours since application. Show as "Dd Hh"
-  const days = Math.floor(ct / 24)
-  const hours = ct % 24
-  if (days === 0) return `${hours}h`
-  if (hours === 0) return `${days}d`
-  return `${days}d ${hours}h`
-}
-
-// Round max value up to a "nice" multiple of 5 for cleaner axis ticks
-function niceMax(value: number): number {
-  if (value <= 0) return 5
-  const step = value < 10 ? 1 : value < 50 ? 5 : 10
-  return Math.ceil(value / step) * step
-}
-
-// Custom tooltip for emission charts: shows both % of TAN and kg/ha for each series
-interface EmissionTooltipProps {
-  active?: boolean
-  payload?: any[]
-  label?: string | number
-  tanApp: number
-  labelFormatter?: (l: any) => string
-}
-
-function EmissionTooltip({
-  active,
-  payload,
-  label,
-  tanApp,
-  labelFormatter,
-}: EmissionTooltipProps) {
-  if (!active || !payload || payload.length === 0) return null
-
-  // Filter to series whose dataKey is a technique (not weather)
-  const techEntries = payload.filter((p: any) =>
-    TECHNIQUES.includes(p.dataKey as any),
-  )
-  const otherEntries = payload.filter(
-    (p: any) => !TECHNIQUES.includes(p.dataKey as any),
-  )
-
-  const labelText = labelFormatter ? labelFormatter(label) : label
-
-  return (
-    <div
-      style={{
-        backgroundColor: '#1e293b',
-        border: '1px solid #475569',
-        borderRadius: '8px',
-        padding: '8px 10px',
-        fontSize: '12px',
-        color: '#e2e8f0',
-      }}
-    >
-      <div style={{ marginBottom: 4, fontWeight: 600 }}>{labelText}</div>
-      {techEntries.map((entry: any) => {
-        const pct = entry.value as number
-        const kg = (pct * tanApp) / 100
-        return (
-          <div
-            key={entry.dataKey}
-            style={{ color: entry.color, lineHeight: '1.4' }}
-          >
-            {entry.dataKey}: {pct.toFixed(2)}% ({kg.toFixed(2)} kg/ha)
-          </div>
-        )
-      })}
-      {otherEntries.map((entry: any) => (
-        <div
-          key={entry.dataKey}
-          style={{ color: entry.color, lineHeight: '1.4' }}
-        >
-          {entry.name}: {entry.value}
-        </div>
-      ))}
-    </div>
-  )
-}
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { type ApiResponse, type FormData, formatDayLabel } from './types'
+import OverviewChart from './OverviewChart'
+import DetailChart from './DetailChart'
 
 export default function Calculation() {
-  const { lat, lng } = useParams<{ lat: string; lng: string }>()
+  const { lat, lng, day } = useParams<{ lat: string; lng: string; day: string }>()
+  const navigate = useNavigate()
+  const selectedDay = day ? parseInt(day, 10) : null
+
   const [locationName, setLocationName] = useState<string | null>(null)
   const [locationLoading, setLocationLoading] = useState(true)
 
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const [selectedDay, setSelectedDay] = useState<number | null>(null)
 
   const [formData, setFormData] = useState<FormData>({
     tanApp: 60,
@@ -189,7 +26,6 @@ export default function Calculation() {
     incorp: 'shallow',
   })
 
-  // Reverse geocode for location name
   useEffect(() => {
     if (!lat || !lng) return
     fetch(
@@ -209,7 +45,6 @@ export default function Calculation() {
       .finally(() => setLocationLoading(false))
   }, [lat, lng])
 
-  // Fetch calculation data
   useEffect(() => {
     if (!lat || !lng) return
 
@@ -230,8 +65,6 @@ export default function Calculation() {
         man_ph: formData.manPh,
         man_source: formData.manSource,
         application_time: formData.applicationTime,
-        // Only send incorporation info when a time has been set; otherwise
-        // no incorporation is performed.
         incorp:
           formData.incorpTime !== null ? formData.incorp : 'none',
         incorp_time: formData.incorpTime ?? 0,
@@ -271,7 +104,6 @@ export default function Calculation() {
   ) => {
     const { name, value, type } = e.target
     if (name === 'incorpTime') {
-      // "" means no incorporation
       setFormData((prev) => ({
         ...prev,
         incorpTime: value === '' ? null : parseFloat(value),
@@ -284,139 +116,43 @@ export default function Calculation() {
     }))
   }
 
-  // Build overview chart data: one row per day, with each technique as a bar series
-  // Values are in % of TAN (left axis). Right axis shows equivalent kg/ha.
-  const overviewData = useMemo(() => {
-    if (!data) return []
-    return data.scenarios.map((s) => {
-      const row: Record<string, any> = {
-        day: s.day,
-        dayLabel: formatDayLabel(s.start),
-        start: s.start,
-      }
-      for (const tech of TECHNIQUES) {
-        row[tech] = s.techniques[tech]?.final_loss_pct ?? 0
-      }
-      return row
-    })
-  }, [data])
-
-  // Dynamic max for overview Y-axis — use the largest bar value across all days/techniques
-  const overviewMax = useMemo(() => {
-    let m = 0
-    for (const row of overviewData) {
-      for (const tech of TECHNIQUES) {
-        const v = row[tech] ?? 0
-        if (v > m) m = v
-      }
-    }
-    return niceMax(m)
-  }, [overviewData])
-
-  // Weather lookup by time_iso (e.g. "2026-04-20T01:00")
-  const weatherByTime = useMemo(() => {
-    const m = new Map<string, WeatherPoint>()
-    if (!data?.weather) return m
-    for (const w of data.weather) m.set(w.time_iso, w)
-    return m
-  }, [data])
-
-  // Build detail chart data for selected day.
-  // Each row combines the per-technique cumulative emissions and the
-  // weather at that hour, so both charts can share the same array.
-  const detailData = useMemo(() => {
-    if (!data || selectedDay === null) return []
-    const scenario = data.scenarios.find((s) => s.day === selectedDay)
-    if (!scenario) return []
-
-    // Parse scenario start as local time. Backend sends e.g. "2026-04-20T00:00"
-    // without timezone, which new Date() treats as local — matching Open-Meteo
-    // data that was requested in the user's timezone.
-    const startMs = new Date(scenario.start).getTime()
-
-    // Collect hourly points keyed by ct
-    const byCt: Record<number, Record<string, any>> = {}
-    for (const tech of TECHNIQUES) {
-      const t = scenario.techniques[tech]
-      if (!t) continue
-      for (const p of t.hourly) {
-        if (!byCt[p.ct]) {
-          const tsMs = startMs + p.ct * 3600 * 1000
-          const d = new Date(tsMs)
-          // Rebuild time_iso in same "YYYY-MM-DDTHH:MM" local format
-          const pad = (n: number) => String(n).padStart(2, '0')
-          const timeIso = `${d.getFullYear()}-${pad(
-            d.getMonth() + 1,
-          )}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-          const w = weatherByTime.get(timeIso)
-          byCt[p.ct] = {
-            ct: p.ct,
-            label: formatTimeAxis(p.ct),
-            air_temp: w ? +w.air_temp.toFixed(1) : null,
-            wind_kmh: w ? +(w.wind_speed * 3.6).toFixed(1) : null,
-            rain_rate: w ? +w.rain_rate.toFixed(2) : 0,
-          }
-        }
-        // er is fraction of TAN lost, convert to %
-        byCt[p.ct][tech] = +(p.er * 100).toFixed(2)
-      }
-    }
-    return Object.values(byCt).sort((a, b) => a.ct - b.ct)
-  }, [data, selectedDay, weatherByTime])
-
-  // Dynamic max for detail Y-axis — largest cumulative emission across all techniques
-  const detailMax = useMemo(() => {
-    let m = 0
-    for (const row of detailData as any[]) {
-      for (const tech of TECHNIQUES) {
-        const v = (row[tech] ?? 0) as number
-        if (v > m) m = v
-      }
-    }
-    return niceMax(m)
-  }, [detailData])
+  const handleDayClick = (day: number) => {
+    navigate(`/calculate/${lat}/${lng}/${day}`)
+  }
 
   const selectedScenario =
     selectedDay !== null && data
       ? data.scenarios.find((s) => s.day === selectedDay)
       : null
 
-  // Label on the X-axis where the incorporation marker should appear.
-  // Chart rows are hourly (ct = 1..168). Round incorp_time up to the next integer
-  // hour to pick the closest existing row (ct=0 isn't in the data).
-  const incorpMarker = useMemo(() => {
-    if (formData.incorpTime === null) return null
-    const targetCt = Math.max(1, Math.ceil(formData.incorpTime))
-    const row = (detailData as any[]).find((r) => r.ct === targetCt)
-    if (!row) return null
-    return {
-      ct: targetCt,
-      info: { mode: formData.incorp, time_h: formData.incorpTime },
-    }
-  }, [detailData, formData.incorp, formData.incorpTime])
-
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6">
-      <div className="max-w-full md:max-w-6xl mx-auto">
-        <Link
-          to={`/?lat=${lat}&lng=${lng}`}
-          className="inline-flex items-center gap-2 text-slate-400 hover:text-slate-200 mb-4 md:mb-6"
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-          Back to map
-        </Link>
+    <div className="min-h-screen bg-slate-900 text-slate-100">
+      <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 md:px-6 py-3">
+        <div className="max-w-full md:max-w-6xl mx-auto">
+          {selectedDay !== null ? (
+            <button
+              onClick={() => navigate(-1)}
+              className="inline-flex items-center gap-2 text-slate-400 hover:text-slate-200"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to overview
+            </button>
+          ) : (
+            <Link
+              to={`/?lat=${lat}&lng=${lng}`}
+              className="inline-flex items-center gap-2 text-slate-400 hover:text-slate-200"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to map
+            </Link>
+          )}
+        </div>
+      </div>
+      <div className="max-w-full md:max-w-6xl mx-auto p-4 md:p-6">
 
         <div className="mb-4 md:mb-6">
           {locationLoading ? (
@@ -592,14 +328,6 @@ export default function Calculation() {
                   </span>
                 )}
               </h2>
-              {selectedDay !== null && (
-                <button
-                  onClick={() => setSelectedDay(null)}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600"
-                >
-                  ← Overview
-                </button>
-              )}
             </div>
 
             {error && (
@@ -609,269 +337,21 @@ export default function Calculation() {
             )}
 
             <div className="h-64 md:h-[calc(100vh-18rem)] min-h-[320px] flex flex-col">
-              {selectedDay === null ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={overviewData}
-                    margin={{ top: 10, right: 2, left: 2, bottom: 5 }}
-                    barCategoryGap="10%"
-                    barGap={2}
-                    onClick={(e: any) => {
-                      if (e && typeof e.activeTooltipIndex === 'number') {
-                        const row = overviewData[e.activeTooltipIndex]
-                        if (row) setSelectedDay(row.day)
-                      }
-                    }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                    <XAxis
-                      dataKey="dayLabel"
-                      stroke="#94a3b8"
-                      tick={{ fontSize: 11 }}
-                    />
-                    <YAxis
-                      key={`left-${overviewMax}`}
-                      yAxisId="left"
-                      stroke="#94a3b8"
-                      tick={{ fontSize: 10 }}
-                      domain={[0, overviewMax]}
-                      label={{
-                        value: 'NH3 loss (% of TAN)',
-                        angle: -90,
-                        position: 'insideLeft',
-                        fill: '#94a3b8',
-                        fontSize: 11,
-                      }}
-                    />
-                    <YAxis
-                      key={`right-${overviewMax}-${formData.tanApp}`}
-                      yAxisId="right"
-                      orientation="right"
-                      stroke="#94a3b8"
-                      tick={{ fontSize: 10 }}
-                      domain={[0, overviewMax]}
-                      tickFormatter={(v: number) =>
-                        ((v * formData.tanApp) / 100).toFixed(1)
-                      }
-                      label={{
-                        value: 'NH3 loss (kg/ha)',
-                        angle: 90,
-                        position: 'insideRight',
-                        fill: '#94a3b8',
-                        fontSize: 11,
-                      }}
-                     />
-                     <Tooltip
-                       content={
-                        <EmissionTooltip tanApp={formData.tanApp} />
-                      }
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    {TECHNIQUES.map((tech) => (
-                      <Bar
-                        key={tech}
-                        dataKey={tech}
-                        yAxisId="left"
-                        fill={TECH_COLORS[tech]}
-                        cursor="pointer"
-                      />
-                    ))}
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <>
-                  {/* Emissions chart (top ~60%) */}
-                  <div className="flex-[3] min-h-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={detailData}
-                        margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                        <XAxis
-                          dataKey="ct"
-                          type="number"
-                          scale="log"
-                          domain={[1, 168]}
-                          ticks={[1, 2, 4, 8, 24, 48, 96, 168]}
-                          tickFormatter={(ct: number) => formatTimeAxis(ct)}
-                          stroke="#94a3b8"
-                          tick={{ fontSize: 10 }}
-                        />
-                        <YAxis
-                          key={`detail-left-${detailMax}`}
-                          yAxisId="left"
-                          stroke="#94a3b8"
-                          tick={{ fontSize: 10 }}
-                          domain={[0, detailMax]}
-                          label={{ value: 'NH3 loss (% of TAN)', angle: -90, position: 'insideLeft', fill: '#94a3b8', fontSize: 11 }}
-                        />
-                        <YAxis
-                          key={`detail-right-${detailMax}-${formData.tanApp}`}
-                          yAxisId="right"
-                          orientation="right"
-                          stroke="#94a3b8"
-                          tick={{ fontSize: 10 }}
-                          domain={[0, detailMax]}
-                          tickFormatter={(v: number) =>
-                            ((v * formData.tanApp) / 100).toFixed(1)
-                          }
-                          label={{ value: 'NH3 loss (kg/ha)', angle: 90, position: 'insideRight', fill: '#94a3b8', fontSize: 11 }}
-                        />
-                        <Tooltip
-                          content={
-                            <EmissionTooltip
-                              tanApp={formData.tanApp}
-                              labelFormatter={(l: any) =>
-                                typeof l === 'number'
-                                  ? formatTimeAxis(l)
-                                  : String(l)
-                              }
-                            />
-                          }
-                        />
-                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                        {TECHNIQUES.map((tech) => (
-                          <Line
-                            key={tech}
-                            type="monotone"
-                            dataKey={tech}
-                            yAxisId="left"
-                            stroke={TECH_COLORS[tech]}
-                            dot={false}
-                            strokeWidth={2}
-                          />
-                        ))}
-                        {incorpMarker && (
-                          <ReferenceLine
-                            yAxisId="left"
-                            x={incorpMarker.ct}
-                            stroke="#fbbf24"
-                            strokeDasharray="4 2"
-                            strokeWidth={2}
-                            label={{
-                              value: `Incorp (${incorpMarker.info.mode}, ${incorpMarker.info.time_h}h)`,
-                              position: 'insideTopRight',
-                              fill: '#fbbf24',
-                              fontSize: 10,
-                            }}
-                          />
-                        )}
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  {/* Weather chart (bottom ~40%) */}
-                  <div className="flex-[2] min-h-0 mt-2">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart
-                        data={detailData}
-                        margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                        <XAxis
-                          dataKey="ct"
-                          type="number"
-                          scale="log"
-                          domain={[1, 168]}
-                          ticks={[1, 2, 4, 8, 24, 48, 96, 168]}
-                          tickFormatter={(ct: number) => formatTimeAxis(ct)}
-                          stroke="#94a3b8"
-                          tick={{ fontSize: 10 }}
-                          label={{
-                            value: 'Time since application',
-                            position: 'insideBottom',
-                            offset: -2,
-                            fill: '#94a3b8',
-                            fontSize: 11,
-                          }}
-                        />
-                        <YAxis
-                          yAxisId="left"
-                          stroke="#94a3b8"
-                          tick={{ fontSize: 10 }}
-                          label={{
-                            value: 'Temp (°C) / Wind (km/h)',
-                            angle: -90,
-                            position: 'insideLeft',
-                            fill: '#94a3b8',
-                            fontSize: 10,
-                          }}
-                        />
-                        <YAxis
-                          yAxisId="right"
-                          orientation="right"
-                          stroke="#94a3b8"
-                          tick={{ fontSize: 10 }}
-                          label={{
-                            value: 'Rain (mm/h)',
-                            angle: 90,
-                            position: 'insideRight',
-                            fill: '#94a3b8',
-                            fontSize: 10,
-                          }}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: '#1e293b',
-                            border: '1px solid #475569',
-                            borderRadius: '8px',
-                          }}
-                          labelStyle={{ color: '#e2e8f0' }}
-                          labelFormatter={(l: any) =>
-                            typeof l === 'number'
-                              ? formatTimeAxis(l)
-                              : String(l)
-                          }
-                        />
-                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                        <Line
-                          yAxisId="right"
-                          type="monotone"
-                          dataKey="rain_rate"
-                          name="Rain (mm/h)"
-                          stroke="#3b82f6"
-                          dot={false}
-                          strokeWidth={2}
-                        />
-                        <Line
-                          yAxisId="left"
-                          type="monotone"
-                          dataKey="air_temp"
-                          name="Air temp (°C)"
-                          stroke="#f97316"
-                          dot={false}
-                          strokeWidth={2}
-                        />
-                        <Line
-                          yAxisId="left"
-                          type="monotone"
-                          dataKey="wind_kmh"
-                          name="Wind (km/h)"
-                          stroke="#22d3ee"
-                          dot={false}
-                          strokeWidth={2}
-                        />
-                        {incorpMarker && (
-                          <ReferenceLine
-                            yAxisId="left"
-                            x={incorpMarker.ct}
-                            stroke="#fbbf24"
-                            strokeDasharray="4 2"
-                            strokeWidth={2}
-                          />
-                        )}
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-                </>
+              {data && selectedDay === null && (
+                <OverviewChart
+                  data={data}
+                  formData={formData}
+                  onDayClick={handleDayClick}
+                />
+              )}
+              {data && selectedDay !== null && (
+                <DetailChart
+                  data={data}
+                  day={selectedDay}
+                  formData={formData}
+                />
               )}
             </div>
-            {selectedDay === null && overviewData.length > 0 && (
-              <p className="text-xs text-slate-500 mt-2">
-                Click a day group to see hourly details.
-              </p>
-            )}
           </div>
         </div>
       </div>

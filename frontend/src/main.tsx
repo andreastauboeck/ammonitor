@@ -11,6 +11,7 @@ createRoot(document.getElementById('root')!).render(
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/calculate/:lat/:lng" element={<Calculation />} />
+        <Route path="/calculate/:lat/:lng/:day" element={<Calculation />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,
