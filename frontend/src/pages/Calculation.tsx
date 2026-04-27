@@ -208,7 +208,7 @@ export default function Calculation() {
 
         <div className="flex flex-col md:flex-row gap-4 md:gap-6">
           {/* Form panel */}
-          <div className="w-full md:w-1/3 lg:w-1/4 bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-700">
+          <div className={`w-full md:w-1/3 lg:w-1/4 bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-700 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
             <h2 className="text-lg font-semibold mb-3">Parameters</h2>
             <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
               <div>
@@ -322,11 +322,6 @@ export default function Calculation() {
                 {selectedDay === null
                   ? 'NH3 loss by application day and technique'
                   : `Detail — ${selectedScenario ? formatDayLabel(selectedScenario.start) : ''}`}
-                {loading && (
-                  <span className="text-sm font-normal text-slate-400 ml-2">
-                    (calculating...)
-                  </span>
-                )}
               </h2>
             </div>
 
@@ -336,20 +331,31 @@ export default function Calculation() {
               </div>
             )}
 
-            <div className="h-64 md:h-[calc(100vh-18rem)] min-h-[320px] flex flex-col">
+            <div className="relative h-64 md:h-[calc(100vh-18rem)] min-h-[320px] flex flex-col">
+              {loading && !data && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="relative w-12 h-12">
+                      <div className="absolute inset-0 rounded-full border-2 border-slate-600" />
+                      <div className="absolute inset-0 rounded-full border-2 border-t-emerald-400 animate-spin" />
+                    </div>
+                    <span className="text-sm text-slate-400">Calculating...</span>
+                  </div>
+                </div>
+              )}
+              {loading && data && (
+                <div className="absolute inset-0 z-20 bg-slate-800/60 backdrop-blur-sm flex items-center justify-center rounded-lg">
+                  <div className="relative w-8 h-8">
+                    <div className="absolute inset-0 rounded-full border-2 border-slate-600" />
+                    <div className="absolute inset-0 rounded-full border-2 border-t-emerald-400 animate-spin" />
+                  </div>
+                </div>
+              )}
               {data && selectedDay === null && (
-                <OverviewChart
-                  data={data}
-                  formData={formData}
-                  onDayClick={handleDayClick}
-                />
+                <OverviewChart data={data} formData={formData} onDayClick={handleDayClick} />
               )}
               {data && selectedDay !== null && (
-                <DetailChart
-                  data={data}
-                  day={selectedDay}
-                  formData={formData}
-                />
+                <DetailChart data={data} day={selectedDay} formData={formData} />
               )}
             </div>
           </div>
