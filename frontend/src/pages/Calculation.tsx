@@ -616,7 +616,9 @@ export default function Calculation() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={overviewData}
-                    margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
+                    margin={{ top: 10, right: 2, left: 2, bottom: 5 }}
+                    barCategoryGap="10%"
+                    barGap={2}
                     onClick={(e: any) => {
                       if (e && typeof e.activeTooltipIndex === 'number') {
                         const row = overviewData[e.activeTooltipIndex]
