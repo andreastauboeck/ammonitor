@@ -37,10 +37,12 @@ RUN npm run build
 # -----------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
+ARG VERSION=0.2.0
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     ENVIRONMENT=production \
-    VERSION=0.1.0
+    VERSION=${VERSION}
 
 WORKDIR /app
 
