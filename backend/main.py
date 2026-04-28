@@ -29,7 +29,7 @@ app.add_middleware(
         "ammonitor.fly.dev",
         "ammonitor.online",
         "www.ammonitor.online",
-    ],
+    ] if ENVIRONMENT == "production" else ["*"],
 )
 
 VariableName = Literal[

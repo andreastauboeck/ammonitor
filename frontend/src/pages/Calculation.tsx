@@ -75,6 +75,7 @@ export default function Calculation() {
     if (!lat || !lng) return
     fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+      { headers: { 'User-Agent': 'ammonitor/0.2' } }
     )
       .then((res) => res.json())
       .then((d) => {
@@ -267,6 +268,12 @@ export default function Calculation() {
           ) : (
             <p className="text-2xl font-bold">{lat}, {lng}</p>
           )}
+          <p className="text-[10px] text-slate-500 mt-0.5">
+            Geocoding by{' '}
+            <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">Nominatim</a>
+            {' · '}Map data &copy;{' '}
+            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">OpenStreetMap</a>
+          </p>
         </div>
 
         <div className="flex flex-col md:flex-row gap-4 md:gap-6">

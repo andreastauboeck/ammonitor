@@ -103,7 +103,8 @@ export default function Home() {
     setIsGeocoding(true)
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`,
+        { headers: { 'User-Agent': 'ammonitor/0.2' } }
       )
       const data = await res.json()
       if (data && data.length > 0) {

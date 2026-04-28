@@ -16,7 +16,7 @@ FORECAST_DAYS = 14
 HOURS_NEEDED = 6 * 24 + 23 + 168  # 335
 
 # Cache TTL in seconds (10 minutes)
-CACHE_TTL = 600
+CACHE_TTL = 1800
 
 # Rounding precision for the cache key to group nearby coordinates
 COORD_PRECISION = 2  # ~1.1 km

@@ -48,6 +48,12 @@ Open <http://localhost:8000> — single container serves both UI and API.
 Push to `main` triggers the CI/CD pipeline (GitHub Actions → GHCR → Fly.io).  
 Bump the version by editing the `VERSION` file at the repo root.
 
+## 🙏 Credits
+
+- [ALFAM2](https://projects.au.dk/alfam) — semi-empirical NH₃ emission model (Hafner et al.)
+- [Open-Meteo](https://open-meteo.com/) — free weather forecast API (CC BY 4.0)
+- [Nominatim](https://nominatim.openstreetmap.org/) / [OpenStreetMap](https://www.openstreetmap.org/) — geocoding & map data (ODbL)
+
 ## 📄 License
 
 AGPL-3.0
