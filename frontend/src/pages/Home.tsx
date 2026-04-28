@@ -165,6 +165,12 @@ export default function Home() {
             {isGeocoding ? '...' : 'Search'}
           </button>
         </div>
+        <p className="text-[10px] text-slate-500 -mt-2 mb-4">
+          Geocoding by{' '}
+          <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">Nominatim</a>
+          {' · '}Map data &copy;{' '}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">OpenStreetMap</a>
+        </p>
 
         <div className="h-64 rounded-xl overflow-hidden border border-slate-700 mb-4">
           <MapContainer

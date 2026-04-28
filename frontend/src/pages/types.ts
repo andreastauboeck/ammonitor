@@ -3,7 +3,6 @@ export type VariableName = 'app.mthd' | 'app.time' | 'man.dm' | 'man.ph' | 'inco
 export interface HourlyPoint {
   hour: number
   er: number
-  j: number
 }
 
 export interface VariantData {

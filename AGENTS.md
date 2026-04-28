@@ -107,7 +107,7 @@ Frontend renders:
       "variants": {
         "Broadcast": {
           "final_loss_pct": 34.56,
-          "hourly": [{"hour": 1, "er": 0.12, "j": 0.45}, ...]
+          "hourly": [{"hour": 1, "er": 0.12}, ...]
         }
       }
     }
