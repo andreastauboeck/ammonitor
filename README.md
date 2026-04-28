@@ -1,136 +1,53 @@
-# ammonitor
+# 🌱 ammonitor
 
-Ammonia emission prediction and monitoring service as a decision support tool for agriculture.
+**Ammonia emission prediction & monitoring** — a decision-support tool for agriculture.
 
-## Stack
+Select a field on the map, choose your manure application parameters, and instantly see how different strategies affect NH₃ loss over the next 7 days.
 
-- **Backend**: FastAPI (Python 3.12), served with Uvicorn
-- **Frontend**: React + TypeScript + Tailwind CSS, bundled with Vite
-- **Container**: Single Docker image serving both via FastAPI in production
+Powered by the [ALFAM2](https://projects.au.dk/alfam) emission model (Hafner et al.) driven by real-time weather forecasts from [Open-Meteo](https://open-meteo.com/).
 
-## Project layout
+> ALFAM2 is a semi-empirical model for predicting ammonia volatilization from field-applied manure, developed from over 2,000 measurements across Europe. Many thanks to the ALFAM2 team for making their R package openly available.
 
-```
-ammonitor/
-├── backend/            # FastAPI app
-│   ├── main.py
-│   ├── requirements.txt
-│   └── .env.example
-├── frontend/           # React + TS + Tailwind (Vite)
-│   ├── src/
-│   ├── package.json
-│   └── vite.config.ts
-├── .idea/runConfigurations/   # PyCharm run configs (shared)
-├── Dockerfile          # Multi-stage, single container (frontend + backend)
-└── .dockerignore
-```
+## 🧪 What it does
 
-## Development
+- **Compare** up to 5 variants of any parameter (application technique, time, dry matter, pH, incorporation depth/time, manure source)
+- **Visualize** 7-day emission forecasts with hourly detail and aligned weather data
+- **Share** scenarios via URL — all parameters are serialized to the address bar
+- **Compute** absolute losses (kg/ha) from your own TAN applied value
 
-### Prerequisites
+## 🛠️ Stack
 
-- Python 3.12
-- Node.js 20
-- PyCharm (optional, but run configs are provided)
+`FastAPI` · `React` · `TypeScript` · `Tailwind` · `Recharts` · `Leaflet` · `R/ALFAM2` · `Docker` · `Fly.io`
 
-### First-time setup
+## 🚀 Quick start
 
-Backend:
+**Prerequisites:** Python 3.12+, Node.js 20+, R + ALFAM2 package
 
 ```bash
-cd backend
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
-pip install -r requirements.txt
+# Backend
+cd backend && pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+
+# Frontend (separate terminal)
+cd frontend && npm install && npm run dev
 ```
 
-Frontend:
+Open <http://localhost:5173> — Vite proxies `/api/*` to the backend automatically.
 
-```bash
-cd frontend
-npm install
-```
-
-### Running from PyCharm
-
-Three run configurations are included in `.idea/runConfigurations/` and are
-tracked in git:
-
-- **Backend** – runs `uvicorn main:app --reload` on port `8000`
-- **Frontend** – runs `npm run dev` (Vite) on port `5173`
-- **Full Stack** – compound config that launches both at once
-
-Open the project in PyCharm, pick **Full Stack**, press Run. Then browse to
-<http://localhost:5173>.
-
-> The Python interpreter for the `Backend` configuration must be set to your
-> project venv (`backend/.venv`) the first time.
-
-### Running manually
-
-Two terminals:
-
-```bash
-# Terminal 1 – backend
-cd backend
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-```bash
-# Terminal 2 – frontend
-cd frontend
-npm run dev
-```
-
-Open <http://localhost:5173>.
-
-### Hot reload
-
-- **Backend**: `uvicorn --reload` restarts on any `.py` change.
-- **Frontend**: Vite HMR updates modules in the browser without a full reload
-  and preserves component state.
-- **API calls**: The Vite dev server proxies `/api/*` to `http://localhost:8000`,
-  so the frontend can call `fetch('/api/status')` with no CORS setup.
-
-## API
-
-| Method | Path          | Description                       |
-|--------|---------------|-----------------------------------|
-| GET    | `/api/status` | Returns status, version, environment |
-
-Example response:
-
-```json
-{ "status": "ok", "version": "0.1.0", "environment": "dev" }
-```
-
-Configurable via environment variables:
-
-- `VERSION` (default `0.1.0`)
-- `ENVIRONMENT` (default `dev`; use `alpha`, `beta`, `production`, etc.)
-
-## Docker (production)
-
-The `Dockerfile` is multi-stage: Node builds the frontend, then the output is
-copied into a Python image where FastAPI serves both the API and the static
-frontend.
-
-Build:
+## 🐳 Docker
 
 ```bash
 docker build -t ammonitor .
+docker run --rm -p 8000:8000 ammonitor
 ```
 
-Run:
+Open <http://localhost:8000> — single container serves both UI and API.
 
-```bash
-docker run --rm -p 8000:8000 \
-  -e ENVIRONMENT=production \
-  -e VERSION=0.1.0 \
-  ammonitor
-```
+## 📦 Deployment
 
-Open <http://localhost:8000> — the single container serves both UI and API.
+Push to `main` triggers the CI/CD pipeline (GitHub Actions → GHCR → Fly.io).  
+Bump the version by editing the `VERSION` file at the repo root.
+
+## 📄 License
+
+AGPL-3.0
