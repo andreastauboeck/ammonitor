@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from run_alfam2 import run_alfam2
 from weather import fetch_weather
@@ -21,6 +22,15 @@ VERSION = os.getenv("VERSION", "0.1.0")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
 
 app = FastAPI(title="ammonitor API", version=VERSION)
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=[
+        "ammonitor.fly.dev",
+        "ammonitor.online",
+        "www.ammonitor.online",
+    ],
+)
 
 VariableName = Literal[
     "app.mthd", "app.time", "man.dm", "man.ph", "incorp", "incorp.depth", "man.source"
