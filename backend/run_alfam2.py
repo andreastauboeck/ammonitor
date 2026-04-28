@@ -15,7 +15,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 SCRIPT_DIR = Path(__file__).parent
 
@@ -26,56 +26,10 @@ VariableName = Literal[
     "app.mthd", "app.time", "man.dm", "man.ph", "incorp", "incorp.depth", "man.source"
 ]
 
-VARIANT_DEFS: dict[VariableName, list[tuple[any, str]]] = {
-    "app.mthd": [
-        ("bc", "Broadcast"),
-        ("th", "Trailing hose"),
-        ("ts", "Trailing shoe"),
-        ("os", "Open slot"),
-        ("cs", "Closed slot"),
-    ],
-    "app.time": [
-        (6, "06:00"),
-        (8, "08:00"),
-        (12, "12:00"),
-        (16, "16:00"),
-        (20, "20:00"),
-    ],
-    "man.dm": [
-        (2.0, "2%"),
-        (4.0, "4%"),
-        (6.0, "6%"),
-        (10.0, "10%"),
-        (14.0, "14%"),
-    ],
-    "man.ph": [
-        (5.5, "5.5"),
-        (6.5, "6.5"),
-        (7.5, "7.5"),
-        (8.0, "8.0"),
-        (9.0, "9.0"),
-    ],
-    "incorp": [
-        (2.0, "2 h"),
-        (4.0, "4 h"),
-        (8.0, "8 h"),
-        (12.0, "12 h"),
-        (24.0, "24 h"),
-    ],
-    "incorp.depth": [
-        ("none", "None"),
-        ("shallow", "Shallow"),
-        ("deep", "Deep"),
-    ],
-    "man.source": [
-        ("cattle", "Cattle"),
-        ("pig", "Pig"),
-    ],
-}
-
 
 def run_alfam2(
     variable: VariableName,
+    variants: list[tuple[Any, str]],
     app_mthd: str = "th",
     man_dm: float = 6.0,
     man_ph: float = 7.5,
@@ -86,7 +40,6 @@ def run_alfam2(
     weather_hourly: list[dict] = None,
     start_dates_iso: list[str] = None,
 ) -> dict:
-    variants = VARIANT_DEFS[variable]
     return _run_alfam2_r(
         variable=variable,
         variants=variants,
@@ -187,6 +140,17 @@ def _run_alfam2_r(
         return _parse_output(out_rows, start_dates_iso, variants)
 
 
+def _parse_app_hour(val) -> int:
+    s = str(val).strip()
+    if ":" in s:
+        return int(s.split(":")[0])
+    return int(float(s))
+
+
+def _parse_float(val) -> float:
+    return float(val)
+
+
 def _build_input_rows(
     variable: VariableName,
     variants: list[tuple[any, str]],
@@ -220,18 +184,16 @@ def _build_input_rows(
                 app_mthd_val = app_mthd
 
             if variable == "man.dm":
-                row_dm = var_value
+                row_dm = _parse_float(var_value)
             if variable == "man.ph":
-                row_ph = var_value
+                row_ph = _parse_float(var_value)
             if variable == "man.source":
-                row_source = "pig" if var_value == "pig" else "cattle"
+                row_source = "pig" if str(var_value).lower() == "pig" else "cattle"
             if variable == "app.time":
-                row_app_hour = var_value
+                row_app_hour = _parse_app_hour(var_value)
 
             if variable == "incorp":
-                row_incorp_time = var_value
-                # If incorp depth is "none", still pass it for this variant
-                # but the R script handles NA incorp correctly
+                row_incorp_time = _parse_float(var_value)
 
             if variable == "incorp.depth":
                 row_incorp = var_value if var_value != "none" else "none"
@@ -345,11 +307,11 @@ if __name__ == "__main__":
     fake_dates = [f"2026-04-{20+i:02d}T00:00:00" for i in range(7)]
     result = run_alfam2(
         variable="app.mthd",
+        variants=[("bc", "Broadcast"), ("th", "Trailing hose"), ("ts", "Trailing shoe"), ("os", "Open slot"), ("cs", "Closed slot")],
         app_mthd="th",
         weather_hourly=fake_weather,
         start_dates_iso=fake_dates,
     )
-    import json
     for s in result["scenarios"]:
         print(f"Day {s['day']} ({s['start']}):")
         for label, data in s["variants"].items():

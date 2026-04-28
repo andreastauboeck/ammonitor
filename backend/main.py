@@ -7,14 +7,14 @@ from __future__ import annotations
 import os
 from datetime import datetime, time as dt_time, timedelta
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from run_alfam2 import run_alfam2, VARIANT_DEFS
+from run_alfam2 import run_alfam2
 from weather import fetch_weather
 
 VERSION = os.getenv("VERSION", "0.1.0")
@@ -27,16 +27,24 @@ VariableName = Literal[
 ]
 
 
+class VariantDef(BaseModel):
+    value: Any
+    label: str
+
+
 class CalculateInput(BaseModel):
     lat: float
     lng: float
     variable: VariableName = "app.mthd"
+    variants: list[VariantDef] = Field(
+        ..., description="Variant definitions from frontend"
+    )
     app_mthd: str = Field("th", description="Application method (when not the variable)")
     man_dm: float = Field(6.0, description="Manure dry matter (%)")
     man_ph: float = Field(7.5, description="Manure pH")
-    man_source: Literal["cattle", "pig"] = "cattle"
-    application_time: Literal["06:00", "08:00", "12:00", "16:00", "20:00"] = "12:00"
-    incorp: Literal["none", "shallow", "deep"] = "none"
+    man_source: str = Field("cattle", description="Manure source")
+    application_time: str = Field("12:00", description="Application time (HH:MM)")
+    incorp: str = Field("none", description="Incorporation depth")
     incorp_time: float = Field(1.0, description="Incorporation time (hours)")
     timezone: str = Field("auto", description="IANA timezone name for weather")
 
@@ -50,20 +58,10 @@ def get_status() -> dict[str, str]:
     }
 
 
-@app.get("/api/variants/{variable}")
-def get_variants(variable: VariableName) -> dict:
-    variants = VARIANT_DEFS[variable]
-    return {
-        "variable": variable,
-        "variants": [{"value": v, "label": label} for v, label in variants],
-    }
-
-
 @app.post("/api/calculate")
 def calculate(input_data: CalculateInput) -> dict:
     variable = input_data.variable
 
-    # Validate: incorp variable requires incorp depth != none
     if variable == "incorp" and input_data.incorp == "none":
         raise HTTPException(
             status_code=422,
@@ -77,7 +75,9 @@ def calculate(input_data: CalculateInput) -> dict:
 
     first_hour_iso = weather["hourly"][0]["time_iso"]
     first_date = datetime.fromisoformat(first_hour_iso).date()
-    app_hour = int(input_data.application_time.split(":")[0])
+
+    app_hour_str = input_data.application_time.split(":")[0]
+    app_hour = int(app_hour_str)
 
     daily_starts = [
         datetime.combine(
@@ -86,8 +86,11 @@ def calculate(input_data: CalculateInput) -> dict:
         for i in range(7)
     ]
 
+    variant_tuples = [(v.value, v.label) for v in input_data.variants]
+
     result = run_alfam2(
         variable=variable,
+        variants=variant_tuples,
         app_mthd=input_data.app_mthd,
         man_dm=input_data.man_dm,
         man_ph=input_data.man_ph,
@@ -99,10 +102,8 @@ def calculate(input_data: CalculateInput) -> dict:
         start_dates_iso=daily_starts,
     )
 
-    result["variable"] = variable
-
     return {
-        "variable": result["variable"],
+        "variable": variable,
         "variant_labels": result["variant_labels"],
         "scenarios": result["scenarios"],
         "weather": weather["hourly"],

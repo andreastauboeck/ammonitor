@@ -106,6 +106,7 @@ export default function Calculation() {
         lat: parseFloat(lat),
         lng: parseFloat(lng),
         variable: formData.variable,
+        variants: VARIANT_DEFS[formData.variable],
         app_mthd: formData.appMthd,
         man_dm: formData.manDm,
         man_ph: formData.manPh,
@@ -364,8 +365,8 @@ export default function Calculation() {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold">
                 {selectedDay === null
-                  ? 'NH3 loss by application day'
-                  : `Detail — ${selectedScenario ? formatDayLabel(selectedScenario.start) : ''}`}
+                  ? `Overview NH3 loss by ${INPUT_LABELS[formData.variable]}`
+                  : `Detail losses on ${selectedScenario ? formatDayLabel(selectedScenario.start) : ''} by ${INPUT_LABELS[formData.variable]}`}
               </h2>
             </div>
 
