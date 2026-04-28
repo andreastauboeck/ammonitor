@@ -8,8 +8,8 @@ import 'leaflet/dist/leaflet.css'
 const customIcon = L.icon({
   iconUrl: '/marker-icon.png',
   shadowUrl: '/marker-shadow.png',
-  iconSize: [150, 150],
-  iconAnchor: [75, 115],
+  iconSize: [100, 100],
+  iconAnchor: [50, 100],
   popupAnchor: [0, -150],
   shadowSize: [150, 150],
   shadowAnchor: [44, 150],
