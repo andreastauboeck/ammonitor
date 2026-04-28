@@ -56,10 +56,10 @@ VARIANT_DEFS: dict[VariableName, list[tuple[any, str]]] = {
         (9.0, "9.0"),
     ],
     "incorp": [
-        (1.0, "1 h"),
         (2.0, "2 h"),
         (4.0, "4 h"),
         (8.0, "8 h"),
+        (12.0, "12 h"),
         (24.0, "24 h"),
     ],
     "incorp.depth": [

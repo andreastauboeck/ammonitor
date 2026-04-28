@@ -80,7 +80,8 @@ function EmissionTooltip({
 
 interface IncorpMarker {
   hour: number
-  info: { mode: string; time_h: number }
+  label: string
+  color: string
 }
 
 interface DetailChartProps {
@@ -89,9 +90,42 @@ interface DetailChartProps {
   formData: FormData
 }
 
+function parseIncorpHour(label: string): number | null {
+  const m = label.match(/(\d+(?:\.\d+)?)\s*h/i)
+  return m ? parseFloat(m[1]) : null
+}
+
+function parseAppHour(label: string): number | null {
+  const m = label.match(/^(\d{1,2}):(\d{2})$/)
+  return m ? parseInt(m[1], 10) : null
+}
+
+function makeTimeIso(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export default function DetailChart({ data, day, formData }: DetailChartProps) {
   const scenario = data.scenarios.find((s) => s.day === day)
   const variantLabels = data.variant_labels
+  const isAppTimeVariable = formData.variable === 'app.time'
+
+  const variantOffsets = useMemo(() => {
+    if (!isAppTimeVariable) return null
+    const offsets: { label: string; appHour: number; offsetFromEarliest: number }[] = []
+    let earliest = 24
+    for (const label of variantLabels) {
+      const h = parseAppHour(label)
+      if (h !== null && h < earliest) earliest = h
+    }
+    for (const label of variantLabels) {
+      const h = parseAppHour(label)
+      offsets.push({ label, appHour: h ?? 0, offsetFromEarliest: (h ?? 0) - earliest })
+    }
+    return offsets
+  }, [isAppTimeVariable, variantLabels])
+
+  const earliestAppHour = variantOffsets ? Math.min(...variantOffsets.map((v) => v.appHour)) : 0
 
   const weatherByTime = useMemo(() => {
     const m = new Map<string, WeatherPoint>()
@@ -102,32 +136,70 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
 
   const detailData = useMemo(() => {
     if (!scenario) return []
-    const startMs = new Date(scenario.start).getTime()
+    const startDate = new Date(scenario.start)
+    const baseDate = new Date(startDate)
+    if (isAppTimeVariable) {
+      baseDate.setHours(earliestAppHour, 0, 0, 0)
+    }
 
-    const byHour: Record<number, Record<string, any>> = {}
+    const ZERO_HOUR = 0.1
+    const byKey: Record<string, Record<string, any>> = {}
+
     for (const label of variantLabels) {
       const t = scenario.variants[label]
       if (!t) continue
-      for (const p of t.hourly) {
-        if (!byHour[p.hour]) {
-          const tsMs = startMs + p.hour * 3600 * 1000
-          const d = new Date(tsMs)
-          const pad = (n: number) => String(n).padStart(2, '0')
-          const timeIso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+
+      let offset = 0
+      if (isAppTimeVariable && variantOffsets) {
+        const vo = variantOffsets.find((v) => v.label === label)
+        offset = vo ? vo.offsetFromEarliest : 0
+      }
+
+      const startHour = isAppTimeVariable ? offset : 0
+
+      if (offset > 0) {
+        const zeroKey = String(startHour + ZERO_HOUR)
+        if (!byKey[zeroKey]) {
+          const tsDate = new Date(baseDate.getTime() + startHour * 3600 * 1000)
+          const timeIso = makeTimeIso(tsDate)
           const w = weatherByTime.get(timeIso)
-          byHour[p.hour] = {
-            hour: p.hour,
-            label: formatTimeAxis(p.hour),
+          byKey[zeroKey] = {
+            hour: startHour + ZERO_HOUR,
+            label: isAppTimeVariable ? formatHybridLabel(baseDate, startHour) : formatTimeAxis(0),
             air_temp: w ? +w.air_temp.toFixed(1) : null,
             wind_kmh: w ? +(w.wind_speed * 3.6).toFixed(1) : null,
             rain_rate: w ? +w.rain_rate.toFixed(2) : 0,
           }
         }
-        byHour[p.hour][label] = +(p.er * 100).toFixed(2)
+        byKey[zeroKey][label] = 0
+      }
+
+      for (const p of t.hourly) {
+        const realHour = p.hour + offset
+        const key = String(realHour)
+
+        if (!byKey[key]) {
+          const tsDate = new Date(baseDate.getTime() + realHour * 3600 * 1000)
+          const timeIso = makeTimeIso(tsDate)
+          const w = weatherByTime.get(timeIso)
+          byKey[key] = {
+            hour: realHour,
+            label: isAppTimeVariable ? formatHybridLabel(baseDate, realHour) : formatTimeAxis(realHour),
+            air_temp: w ? +w.air_temp.toFixed(1) : null,
+            wind_kmh: w ? +(w.wind_speed * 3.6).toFixed(1) : null,
+            rain_rate: w ? +w.rain_rate.toFixed(2) : 0,
+          }
+        }
+        byKey[key][label] = +(p.er * 100).toFixed(2)
       }
     }
-    return Object.values(byHour).sort((a, b) => a.hour - b.hour)
-  }, [scenario, variantLabels, weatherByTime])
+    return Object.values(byKey).sort((a, b) => a.hour - b.hour)
+  }, [scenario, variantLabels, weatherByTime, isAppTimeVariable, variantOffsets, earliestAppHour])
+
+  const maxHour = useMemo(() => {
+    if (!detailData.length) return 168
+    return Math.max(168, (detailData as any[])[detailData.length - 1].hour)
+  }, [detailData])
 
   const detailMax = useMemo(() => {
     let m = 0
@@ -140,19 +212,57 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     return niceMax(m)
   }, [detailData, variantLabels])
 
-  const incorpMarker: IncorpMarker | null = useMemo(() => {
-    if (formData.incorp === 'none') return null
-    const targetHour = Math.max(1, Math.ceil(formData.incorpTime))
-    const row = (detailData as any[]).find((r) => r.hour === targetHour)
-    if (!row) return null
-    return {
-      hour: targetHour,
-      info: { mode: formData.incorp, time_h: formData.incorpTime },
-    }
-  }, [detailData, formData.incorp, formData.incorpTime])
+  const incorpMarkers: IncorpMarker[] = useMemo(() => {
+    if (formData.incorp === 'none') return []
+    if (!detailData.length) return []
 
-  const fmtLabel = (l: any) =>
-    typeof l === 'number' ? formatTimeAxis(l) : String(l)
+    if (formData.variable === 'incorp') {
+      const markers: IncorpMarker[] = []
+      for (let i = 0; i < variantLabels.length; i++) {
+        const hour = parseIncorpHour(variantLabels[i])
+        if (hour == null) continue
+        let xHour = hour
+        if (isAppTimeVariable && variantOffsets) {
+          xHour = hour + variantOffsets[i].offsetFromEarliest
+        }
+        markers.push({
+          hour: xHour,
+          label: variantLabels[i],
+          color: VARIANT_COLORS[i % VARIANT_COLORS.length],
+        })
+      }
+      return markers
+    }
+
+    const targetHour = formData.incorpTime
+    const closest = (detailData as any[]).reduce((prev: any, curr: any) =>
+      Math.abs(curr.hour - targetHour) < Math.abs(prev.hour - targetHour) ? curr : prev,
+    )
+    if (!closest) return []
+    return [{
+      hour: closest.hour,
+      label: `Incorp (${formData.incorp}, ${formData.incorpTime}h)`,
+      color: '#fbbf24',
+    }]
+  }, [detailData, formData.incorp, formData.incorpTime, formData.variable, variantLabels, isAppTimeVariable, variantOffsets])
+
+  const logTicks = useMemo(() => {
+    const ticks = [1, 2, 4, 8, 24, 48, 96, 168]
+    if (maxHour > 168) ticks.push(maxHour)
+    return ticks
+  }, [maxHour])
+
+  const fmtLabel = useMemo(() => {
+    if (!isAppTimeVariable) {
+      return (l: any) => typeof l === 'number' ? formatTimeAxis(l) : String(l)
+    }
+    const baseDate = scenario ? new Date(scenario.start) : new Date()
+    baseDate.setHours(earliestAppHour, 0, 0, 0)
+    return (l: any) => {
+      if (typeof l !== 'number') return String(l)
+      return formatHybridLabel(baseDate, l)
+    }
+  }, [isAppTimeVariable, scenario, earliestAppHour])
 
   if (!scenario) return null
 
@@ -175,9 +285,9 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                 dataKey="hour"
                 type="number"
                 scale="log"
-                domain={[1, 168]}
-                ticks={[1, 2, 4, 8, 24, 48, 96, 168]}
-                tickFormatter={(h: number) => formatTimeAxis(h)}
+                domain={[1, maxHour]}
+                ticks={logTicks}
+                tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(h)}
                 stroke="#94a3b8"
                 tick={{ fontSize: 10 }}
               />
@@ -218,23 +328,25 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   stroke={VARIANT_COLORS[i % VARIANT_COLORS.length]}
                   dot={false}
                   strokeWidth={2}
+                  connectNulls
                 />
               ))}
-              {incorpMarker && (
+              {incorpMarkers.map((m) => (
                 <ReferenceLine
+                  key={m.label}
                   yAxisId="left"
-                  x={incorpMarker.hour}
-                  stroke="#fbbf24"
+                  x={m.hour}
+                  stroke={m.color}
                   strokeDasharray="4 2"
                   strokeWidth={2}
                   label={{
-                    value: `Incorp (${incorpMarker.info.mode}, ${incorpMarker.info.time_h}h)`,
+                    value: m.label,
                     position: 'insideTopRight',
-                    fill: '#fbbf24',
+                    fill: m.color,
                     fontSize: 10,
                   }}
                 />
-              )}
+              ))}
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -262,9 +374,9 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                 dataKey="hour"
                 type="number"
                 scale="log"
-                domain={[1, 168]}
-                ticks={[1, 2, 4, 8, 24, 48, 96, 168]}
-                tickFormatter={(h: number) => formatTimeAxis(h)}
+                domain={[1, maxHour]}
+                ticks={logTicks}
+                tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(h)}
                 stroke="#94a3b8"
                 tick={{ fontSize: 10 }}
               />
@@ -316,15 +428,16 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                 dot={false}
                 strokeWidth={2}
               />
-              {incorpMarker && (
+              {incorpMarkers.map((m) => (
                 <ReferenceLine
+                  key={m.label}
                   yAxisId="left"
-                  x={incorpMarker.hour}
-                  stroke="#fbbf24"
+                  x={m.hour}
+                  stroke={m.color}
                   strokeDasharray="4 2"
                   strokeWidth={2}
                 />
-              )}
+              ))}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -336,4 +449,15 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
       </div>
     </>
   )
+}
+
+function formatHybridLabel(baseDate: Date, hoursSinceBase: number): string {
+  const d = new Date(baseDate.getTime() + hoursSinceBase * 3600 * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const clock = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const daysSince = Math.floor(hoursSinceBase / 24)
+  if (daysSince === 0) return `${clock} (+${hoursSinceBase}h)`
+  const remaining = hoursSinceBase % 24
+  if (remaining === 0) return `Day ${daysSince}, ${clock} (+${hoursSinceBase}h)`
+  return `Day ${daysSince}, ${clock} (+${hoursSinceBase}h)`
 }
