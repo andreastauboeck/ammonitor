@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, time as dt_time, timedelta
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -32,19 +32,30 @@ app.add_middleware(
     ],
 )
 
+VariableName = Literal[
+    "app.mthd", "app.time", "man.dm", "man.ph", "incorp", "incorp.depth", "man.source"
+]
+
+
+class VariantDef(BaseModel):
+    value: Any
+    label: str
+
 
 class CalculateInput(BaseModel):
     lat: float
     lng: float
-    tan_app: float = Field(..., description="TAN applied (kg/ha)")
-    man_dm: float = Field(..., description="Manure dry matter (%)")
-    man_ph: float = Field(..., description="Manure pH")
-    man_source: Literal["cattle", "pig"] = "cattle"
-    application_time: Literal["06:00", "14:00", "18:00"] = "14:00"
-    incorp: Literal["none", "shallow", "deep"] = "none"
-    incorp_time: float = Field(
-        0.5, description="Time after application when incorporation occurs (hours)"
+    variable: VariableName = "app.mthd"
+    variants: list[VariantDef] = Field(
+        ..., description="Variant definitions from frontend"
     )
+    app_mthd: str = Field("th", description="Application method (when not the variable)")
+    man_dm: float = Field(6.0, description="Manure dry matter (%)")
+    man_ph: float = Field(7.5, description="Manure pH")
+    man_source: str = Field("cattle", description="Manure source")
+    application_time: str = Field("12:00", description="Application time (HH:MM)")
+    incorp: str = Field("none", description="Incorporation depth")
+    incorp_time: float = Field(1.0, description="Incorporation time (hours)")
     timezone: str = Field("auto", description="IANA timezone name for weather")
 
 
@@ -59,17 +70,24 @@ def get_status() -> dict[str, str]:
 
 @app.post("/api/calculate")
 def calculate(input_data: CalculateInput) -> dict:
-    """Run ALFAM2 calculation for 7 scenarios x 5 techniques."""
+    variable = input_data.variable
+
+    if variable == "incorp" and input_data.incorp == "none":
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot vary incorporation time when incorporation depth is 'none'",
+        )
+
     try:
         weather = fetch_weather(input_data.lat, input_data.lng, input_data.timezone)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Weather fetch failed: {e}")
 
-    # Compute daily_starts: for each of 7 days, the start timestamp of the
-    # scenario (application time). The first weather hour is at 00:00 of day 0.
     first_hour_iso = weather["hourly"][0]["time_iso"]
     first_date = datetime.fromisoformat(first_hour_iso).date()
-    app_hour = int(input_data.application_time.split(":")[0])
+
+    app_hour_str = input_data.application_time.split(":")[0]
+    app_hour = int(app_hour_str)
 
     daily_starts = [
         datetime.combine(
@@ -78,23 +96,25 @@ def calculate(input_data: CalculateInput) -> dict:
         for i in range(7)
     ]
 
-    # app_rate does not affect ALFAM2 (parameter set 3 has no app.rate.ni
-    # coefficient). We pass a fixed reference value internally.
+    variant_tuples = [(v.value, v.label) for v in input_data.variants]
+
     result = run_alfam2(
-        tan_app=input_data.tan_app,
+        variable=variable,
+        variants=variant_tuples,
+        app_mthd=input_data.app_mthd,
         man_dm=input_data.man_dm,
         man_ph=input_data.man_ph,
         man_source=input_data.man_source,
-        app_rate=30.0,
+        application_hour=app_hour,
         incorp=input_data.incorp,
         incorp_time=input_data.incorp_time,
-        application_hour=app_hour,
         weather_hourly=weather["hourly"],
         start_dates_iso=daily_starts,
     )
 
-    # Return only what frontend needs: scenarios + weather
     return {
+        "variable": variable,
+        "variant_labels": result["variant_labels"],
         "scenarios": result["scenarios"],
         "weather": weather["hourly"],
     }
