@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import type { Map } from 'leaflet'
 import L from 'leaflet'
@@ -292,6 +292,9 @@ export default function Home() {
           <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener noreferrer" className="hover:text-slate-300">Nominatim</a>
           <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="hover:text-slate-300">Open-Meteo</a>
           <a href="https://projects.au.dk/alfam" target="_blank" rel="noopener noreferrer" className="hover:text-slate-300">ALFAM2</a>
+          <Link to="/imprint" className="hover:text-slate-300">Imprint</Link>
+          <Link to="/privacy" className="hover:text-slate-300">Privacy</Link>
+          <Link to="/terms" className="hover:text-slate-300">Terms</Link>
         </div>
       </div>
     </div>
