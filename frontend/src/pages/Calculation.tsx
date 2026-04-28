@@ -5,6 +5,7 @@ import {
   type FormData,
   type VariableName,
   VARIANT_DEFS,
+  TAN_PRESETS,
   INPUT_LABELS,
   DEFAULT_FORM_DATA,
   formatDayLabel,
@@ -277,21 +278,22 @@ export default function Calculation() {
         <div className="flex flex-col md:flex-row gap-4 md:gap-6">
           {/* Form panel */}
           <div className={`w-full md:w-1/3 lg:w-1/4 bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-700 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-2 mb-3">
               <h2 className="text-lg font-semibold">Parameters</h2>
               <div className="flex items-center gap-1.5 ml-auto">
-                <label className="text-xs text-slate-400">TAN (kg/ha)</label>
-                <input
-                  type="number"
+                <label className="text-xs text-slate-400">TAN</label>
+                <select
                   value={formData.tanApp}
                   onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      tanApp: parseFloat(e.target.value) || 0,
-                    }))
+                    setFormData((prev) => ({ ...prev, tanApp: parseFloat(e.target.value) }))
                   }
-                  className="w-20 px-2 py-1 text-sm rounded-lg bg-slate-700 border border-slate-600 focus:outline-none focus:border-indigo-500"
-                />
+                  className="px-2 py-1 text-sm rounded-lg bg-slate-700 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                >
+                  {TAN_PRESETS.map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-slate-500">kg/ha</span>
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-1 gap-3">

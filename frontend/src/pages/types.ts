@@ -107,6 +107,8 @@ export const INPUT_LABELS: Record<VariableName, string> = {
   'man.source': 'Manure source',
 }
 
+export const TAN_PRESETS = [20, 30, 40, 50, 60, 70, 80, 100, 120, 150]
+
 export const DEFAULT_FORM_DATA: FormData = {
   tanApp: 60,
   variable: 'app.mthd',
