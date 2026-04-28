@@ -4,9 +4,8 @@ Runs 7 scenarios (day 0..6) in a single R call. Each scenario represents
 applying manure at the start of that day and tracking cumulative NH3 loss
 over the following 168 hours (7 days).
 
-Each scenario is run for all 5 application techniques (Trailing hose,
-Broadcast, Trailing shoe, Open slot, Closed slot), giving 7 * 5 = 35 groups
-per R invocation.
+Each scenario is run for all variants of the selected variable, giving
+7 * <num_variants> groups per R invocation.
 """
 from __future__ import annotations
 
@@ -16,109 +15,113 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Iterable
+from typing import Literal
 
 SCRIPT_DIR = Path(__file__).parent
 
-# ALFAM2 app.mthd codes and their human-readable labels (frontend display).
-# "th" (trailing hose) is the reference level - empty string means no dummy set.
-TECHNIQUES: list[tuple[str, str]] = [
-    ("bc", "Broadcast"),
-    ("th", "Trailing hose"),
-    ("ts", "Trailing shoe"),
-    ("os", "Open slot"),
-    ("cs", "Closed slot"),
+N_SCENARIOS = 7
+SCENARIO_HOURS = 168
+
+VariableName = Literal[
+    "app.mthd", "app.time", "man.dm", "man.ph", "incorp", "incorp.depth", "man.source"
 ]
 
-# Number of scenarios (days) to compute
-N_SCENARIOS = 7
-# Length of each scenario window in hours (7 days)
-SCENARIO_HOURS = 168
+VARIANT_DEFS: dict[VariableName, list[tuple[any, str]]] = {
+    "app.mthd": [
+        ("bc", "Broadcast"),
+        ("th", "Trailing hose"),
+        ("ts", "Trailing shoe"),
+        ("os", "Open slot"),
+        ("cs", "Closed slot"),
+    ],
+    "app.time": [
+        (6, "06:00"),
+        (8, "08:00"),
+        (12, "12:00"),
+        (16, "16:00"),
+        (20, "20:00"),
+    ],
+    "man.dm": [
+        (2.0, "2%"),
+        (4.0, "4%"),
+        (6.0, "6%"),
+        (10.0, "10%"),
+        (14.0, "14%"),
+    ],
+    "man.ph": [
+        (5.5, "5.5"),
+        (6.5, "6.5"),
+        (7.5, "7.5"),
+        (8.0, "8.0"),
+        (9.0, "9.0"),
+    ],
+    "incorp": [
+        (1.0, "1 h"),
+        (2.0, "2 h"),
+        (4.0, "4 h"),
+        (8.0, "8 h"),
+        (24.0, "24 h"),
+    ],
+    "incorp.depth": [
+        ("none", "None"),
+        ("shallow", "Shallow"),
+        ("deep", "Deep"),
+    ],
+    "man.source": [
+        ("cattle", "Cattle"),
+        ("pig", "Pig"),
+    ],
+}
 
 
 def run_alfam2(
-    tan_app: float,
-    man_dm: float,
-    man_ph: float,
-    man_source: str,
-    app_rate: float,
-    incorp: str,
-    incorp_time: float,
-    application_hour: int,
-    weather_hourly: list[dict],
-    start_dates_iso: list[str],
+    variable: VariableName,
+    app_mthd: str = "th",
+    man_dm: float = 6.0,
+    man_ph: float = 7.5,
+    man_source: str = "cattle",
+    application_hour: int = 12,
+    incorp: str = "none",
+    incorp_time: float = 1.0,
+    weather_hourly: list[dict] = None,
+    start_dates_iso: list[str] = None,
 ) -> dict:
-    """Run the ALFAM2 model for 7 scenarios x 5 techniques.
-
-    Args:
-        tan_app: TAN applied (kg/ha)
-        man_dm: Manure dry matter (%)
-        man_ph: Manure pH
-        man_source: "cattle" or "pig"
-        app_rate: Application rate (t/ha)
-        incorp: "none", "shallow", or "deep"
-        weather_hourly: List of 13*24 = 312 hourly weather dicts with keys
-                        'air_temp', 'wind_speed', 'rain_rate'
-        start_dates_iso: ISO datetime strings for each scenario start (day 0..6)
-
-    Returns:
-        Dict with structure:
-        {
-            "scenarios": [
-                {
-                    "day": 0,
-                    "start": "2026-04-20T00:00:00",
-                    "techniques": {
-                        "Trailing hose": {
-                            "final_loss_pct": 35.2,
-                            "hourly": [{"ct": 1, "e": 0.5, "er": 0.01, "j": 0.5}, ...]
-                        },
-                        ...
-                    }
-                },
-                ...
-            ]
-        }
-    """
+    variants = VARIANT_DEFS[variable]
     return _run_alfam2_r(
-        tan_app=tan_app,
+        variable=variable,
+        variants=variants,
+        app_mthd=app_mthd,
         man_dm=man_dm,
         man_ph=man_ph,
         man_source=man_source,
-        app_rate=app_rate,
+        application_hour=application_hour,
         incorp=incorp,
         incorp_time=incorp_time,
-        application_hour=application_hour,
         weather_hourly=weather_hourly,
         start_dates_iso=start_dates_iso,
     )
 
 
 def _run_alfam2_r(
-    tan_app: float,
+    variable: VariableName,
+    variants: list[tuple[any, str]],
+    app_mthd: str,
     man_dm: float,
     man_ph: float,
     man_source: str,
-    app_rate: float,
+    application_hour: int,
     incorp: str,
     incorp_time: float,
-    application_hour: int,
     weather_hourly: list[dict],
     start_dates_iso: list[str],
 ) -> dict:
-    """Build CSV input, run R, parse output."""
-    # Each scenario starts at (day_idx * 24 + application_hour) hours from weather[0],
-    # and spans SCENARIO_HOURS hours. The latest index needed is:
     min_needed = (N_SCENARIOS - 1) * 24 + application_hour + SCENARIO_HOURS
-    if len(weather_hourly) < min_needed:
+    if weather_hourly is not None and len(weather_hourly) < min_needed:
         raise ValueError(
             f"Need at least {min_needed} hours of weather, got {len(weather_hourly)}"
         )
 
-    # man.source: "pig" or "cattle" (reference)
     man_source_str = "pig" if man_source.lower() == "pig" else "cattle"
-
-    # Normalize incorp
     incorp_lc = incorp.lower() if incorp else "none"
     if incorp_lc not in ("none", "shallow", "deep"):
         incorp_lc = "none"
@@ -128,14 +131,15 @@ def _run_alfam2_r(
         output_file = os.path.join(tmpdir, "output.csv")
 
         rows = _build_input_rows(
-            tan_app=tan_app,
+            variable=variable,
+            variants=variants,
+            app_mthd=app_mthd,
             man_dm=man_dm,
             man_ph=man_ph,
             man_source_str=man_source_str,
-            app_rate=app_rate,
+            application_hour=application_hour,
             incorp=incorp_lc,
             incorp_time=incorp_time,
-            application_hour=application_hour,
             weather_hourly=weather_hourly,
         )
 
@@ -180,40 +184,67 @@ def _run_alfam2_r(
         if not out_rows:
             raise ValueError("Empty output from ALFAM2")
 
-        return _parse_output(out_rows, start_dates_iso)
+        return _parse_output(out_rows, start_dates_iso, variants)
 
 
 def _build_input_rows(
-    tan_app: float,
+    variable: VariableName,
+    variants: list[tuple[any, str]],
+    app_mthd: str,
     man_dm: float,
     man_ph: float,
     man_source_str: str,
-    app_rate: float,
+    application_hour: int,
     incorp: str,
     incorp_time: float,
-    application_hour: int,
     weather_hourly: list[dict],
 ) -> list[dict]:
-    """Build the grouped input CSV rows.
-
-    Each (scenario_day, technique) combination is one group. For each group,
-    we emit 168 rows (one per hour) with weather values appropriate for that
-    scenario's time window.
-    """
     rows: list[dict] = []
-    # t.incorp: only meaningful if incorp != "none".
-    t_incorp_val = incorp_time if incorp != "none" else ""
-    incorp_val = incorp if incorp != "none" else ""
+    tan_app = 60.0  # Fixed reference; does not affect er (relative emission)
 
     for day_idx in range(N_SCENARIOS):
-        # Each scenario starts at midnight of day_idx + application_hour
-        start_hour = day_idx * 24 + application_hour
-        for tech_code, tech_label in TECHNIQUES:
-            # Unique scenario id combining day + technique
-            scenario_id = f"d{day_idx}_{tech_code}"
+        for var_idx, (var_value, var_label) in enumerate(variants):
+            scenario_id = f"d{day_idx}_v{var_idx}"
 
-            # app.mthd: empty string = reference (trailing hose)
-            app_mthd_val = tech_code if tech_code != "th" else ""
+            # Determine per-row values based on which variable is active
+            row_dm = man_dm
+            row_ph = man_ph
+            row_source = man_source_str
+            row_app_hour = application_hour
+            row_incorp = incorp
+            row_incorp_time = incorp_time
+
+            if variable == "app.mthd":
+                app_mthd_val = var_value
+            else:
+                app_mthd_val = app_mthd
+
+            if variable == "man.dm":
+                row_dm = var_value
+            if variable == "man.ph":
+                row_ph = var_value
+            if variable == "man.source":
+                row_source = "pig" if var_value == "pig" else "cattle"
+            if variable == "app.time":
+                row_app_hour = var_value
+
+            if variable == "incorp":
+                row_incorp_time = var_value
+                # If incorp depth is "none", still pass it for this variant
+                # but the R script handles NA incorp correctly
+
+            if variable == "incorp.depth":
+                row_incorp = var_value if var_value != "none" else "none"
+                # If depth is "none", don't send t.incorp
+                if var_value == "none":
+                    row_incorp = "none"
+                    row_incorp_time = 0
+
+            start_hour = day_idx * 24 + row_app_hour
+
+            # t.incorp and incorp: only meaningful when incorp != "none"
+            t_incorp_val = row_incorp_time if row_incorp != "none" else ""
+            incorp_val = row_incorp if row_incorp != "none" else ""
 
             for hour_in_scenario in range(1, SCENARIO_HOURS + 1):
                 weather_idx = start_hour + hour_in_scenario - 1
@@ -223,23 +254,21 @@ def _build_input_rows(
                 rain_rate = max(float(w.get("rain_rate", 0.0)), 0.0)
                 wind_sqrt = math.sqrt(wind_speed)
 
-                rows.append(
-                    {
-                        "scenario": scenario_id,
-                        "ct": hour_in_scenario,
-                        "TAN.app": tan_app,
-                        "man.dm": man_dm,
-                        "man.ph": man_ph,
-                        "man.source": man_source_str,
-                        "app.mthd": app_mthd_val,
-                        "incorp": incorp_val,
-                        "t.incorp": t_incorp_val,
-                        "app.rate": app_rate,
-                        "air.temp": air_temp,
-                        "wind.sqrt": wind_sqrt,
-                        "rain.rate": rain_rate,
-                    }
-                )
+                rows.append({
+                    "scenario": scenario_id,
+                    "ct": hour_in_scenario,
+                    "TAN.app": tan_app,
+                    "man.dm": row_dm,
+                    "man.ph": row_ph,
+                    "man.source": row_source,
+                    "app.mthd": app_mthd_val,
+                    "incorp": incorp_val,
+                    "t.incorp": t_incorp_val,
+                    "app.rate": 30.0,
+                    "air.temp": air_temp,
+                    "wind.sqrt": wind_sqrt,
+                    "rain.rate": rain_rate,
+                })
 
     return rows
 
@@ -254,9 +283,11 @@ def _safe_float(val) -> float:
         return 0.0
 
 
-def _parse_output(out_rows: list[dict], start_dates_iso: list[str]) -> dict:
-    """Convert R CSV output into the structured response."""
-    # Group rows by scenario id
+def _parse_output(
+    out_rows: list[dict],
+    start_dates_iso: list[str],
+    variants: list[tuple[any, str]],
+) -> dict:
     by_scenario: dict[str, list[dict]] = {}
     for r in out_rows:
         sid = r.get("scenario", "")
@@ -265,71 +296,61 @@ def _parse_output(out_rows: list[dict], start_dates_iso: list[str]) -> dict:
     scenarios: list[dict] = []
     for day_idx in range(N_SCENARIOS):
         start_iso = start_dates_iso[day_idx] if day_idx < len(start_dates_iso) else ""
-        techniques_out: dict[str, dict] = {}
+        variants_out: dict[str, dict] = {}
 
-        for tech_code, tech_label in TECHNIQUES:
-            sid = f"d{day_idx}_{tech_code}"
+        for var_idx, (var_value, var_label) in enumerate(variants):
+            sid = f"d{day_idx}_v{var_idx}"
             rows = by_scenario.get(sid, [])
             hourly: list[dict] = []
             final_er = 0.0
             for r in rows:
                 try:
-                    ct = int(float(r.get("ct", 0)))
+                    hour = int(float(r.get("ct", 0)))
                 except (ValueError, TypeError):
                     continue
                 er = _safe_float(r.get("er"))
-                e = _safe_float(r.get("e"))
                 j = _safe_float(r.get("j"))
-                hourly.append({"ct": ct, "e": e, "er": er, "j": j})
-                final_er = er  # last row's er is cumulative relative emission
+                hourly.append({"hour": hour, "er": er, "j": j})
+                final_er = er
 
-            # sort by ct just in case
-            hourly.sort(key=lambda x: x["ct"])
+            hourly.sort(key=lambda x: x["hour"])
             if hourly:
                 final_er = hourly[-1]["er"]
 
-            final_e = hourly[-1]["e"] if hourly else 0.0
-            techniques_out[tech_label] = {
+            variants_out[var_label] = {
                 "final_loss_pct": round(final_er * 100.0, 2),
-                "final_loss_kg": round(final_e, 4),
                 "hourly": hourly,
             }
 
-        scenarios.append(
-            {
-                "day": day_idx,
-                "start": start_iso,
-                "techniques": techniques_out,
-            }
-        )
+        scenarios.append({
+            "day": day_idx,
+            "start": start_iso,
+            "variants": variants_out,
+        })
 
-    return {"scenarios": scenarios}
+    return {
+        "variable": None,  # filled by caller
+        "variant_labels": [label for _, label in variants],
+        "scenarios": scenarios,
+    }
 
 
 if __name__ == "__main__":
-    # Test run with fake weather
     fake_weather = [
         {"air_temp": 15.0 + 5 * math.sin(i * 2 * math.pi / 24),
          "wind_speed": 3.0,
          "rain_rate": 0.0}
-        for i in range(13 * 24)
+        for i in range(400)
     ]
     fake_dates = [f"2026-04-{20+i:02d}T00:00:00" for i in range(7)]
     result = run_alfam2(
-        tan_app=60.0,
-        man_dm=6.0,
-        man_ph=7.5,
-        man_source="cattle",
-        app_rate=30.0,
-        incorp="none",
-        incorp_time=0.5,
-        application_hour=0,
+        variable="app.mthd",
+        app_mthd="th",
         weather_hourly=fake_weather,
         start_dates_iso=fake_dates,
     )
     import json
-    # Print summary only
     for s in result["scenarios"]:
         print(f"Day {s['day']} ({s['start']}):")
-        for tech, data in s["techniques"].items():
-            print(f"  {tech}: {data['final_loss_pct']:.2f}%")
+        for label, data in s["variants"].items():
+            print(f"  {label}: {data['final_loss_pct']:.2f}%")

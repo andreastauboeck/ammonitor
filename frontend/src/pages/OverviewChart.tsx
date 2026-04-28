@@ -12,8 +12,7 @@ import {
 import {
   type ApiResponse,
   type FormData,
-  TECHNIQUES,
-  TECH_COLORS,
+  VARIANT_COLORS,
   niceMax,
 } from './types'
 
@@ -26,9 +25,6 @@ interface EmissionTooltipProps {
 
 function EmissionTooltip({ active, payload, label, tanApp }: EmissionTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
-  const techEntries = payload.filter((p: any) =>
-    TECHNIQUES.includes(p.dataKey as any),
-  )
   return (
     <div
       style={{
@@ -41,7 +37,7 @@ function EmissionTooltip({ active, payload, label, tanApp }: EmissionTooltipProp
       }}
     >
       <div style={{ marginBottom: 4, fontWeight: 600 }}>{label}</div>
-      {techEntries.map((entry: any) => {
+      {payload.map((entry: any) => {
         const pct = entry.value as number
         const kg = (pct * tanApp) / 100
         return (
@@ -61,6 +57,8 @@ interface OverviewChartProps {
 }
 
 export default function OverviewChart({ data, formData, onDayClick }: OverviewChartProps) {
+  const variantLabels = data.variant_labels
+
   const overviewData = useMemo(() => {
     return data.scenarios.map((s) => {
       const row: Record<string, any> = {
@@ -72,23 +70,23 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
         }),
         start: s.start,
       }
-      for (const tech of TECHNIQUES) {
-        row[tech] = s.techniques[tech]?.final_loss_pct ?? 0
+      for (const label of variantLabels) {
+        row[label] = s.variants[label]?.final_loss_pct ?? 0
       }
       return row
     })
-  }, [data])
+  }, [data, variantLabels])
 
   const overviewMax = useMemo(() => {
     let m = 0
     for (const row of overviewData) {
-      for (const tech of TECHNIQUES) {
-        const v = row[tech] ?? 0
+      for (const label of variantLabels) {
+        const v = row[label] ?? 0
         if (v > m) m = v
       }
     }
     return niceMax(m)
-  }, [overviewData])
+  }, [overviewData, variantLabels])
 
   return (
     <>
@@ -134,12 +132,12 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
               />
               <Tooltip content={<EmissionTooltip tanApp={formData.tanApp} />} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              {TECHNIQUES.map((tech) => (
+              {variantLabels.map((label, i) => (
                 <Bar
-                  key={tech}
-                  dataKey={tech}
+                  key={label}
+                  dataKey={label}
                   yAxisId="left"
-                  fill={TECH_COLORS[tech]}
+                  fill={VARIANT_COLORS[i % VARIANT_COLORS.length]}
                   cursor="pointer"
                 />
               ))}

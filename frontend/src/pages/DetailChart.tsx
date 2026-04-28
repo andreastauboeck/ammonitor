@@ -15,8 +15,7 @@ import {
   type ApiResponse,
   type FormData,
   type WeatherPoint,
-  TECHNIQUES,
-  TECH_COLORS,
+  VARIANT_COLORS,
   formatTimeAxis,
   niceMax,
 } from './types'
@@ -27,6 +26,7 @@ interface EmissionTooltipProps {
   label?: string | number
   tanApp: number
   labelFormatter?: (l: any) => string
+  variantLabels: string[]
 }
 
 function EmissionTooltip({
@@ -35,14 +35,15 @@ function EmissionTooltip({
   label,
   tanApp,
   labelFormatter,
+  variantLabels,
 }: EmissionTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
 
-  const techEntries = payload.filter((p: any) =>
-    TECHNIQUES.includes(p.dataKey as any),
+  const variantEntries = payload.filter((p: any) =>
+    variantLabels.includes(p.dataKey as any),
   )
   const otherEntries = payload.filter(
-    (p: any) => !TECHNIQUES.includes(p.dataKey as any),
+    (p: any) => !variantLabels.includes(p.dataKey as any),
   )
 
   const labelText = labelFormatter ? labelFormatter(label) : label
@@ -59,7 +60,7 @@ function EmissionTooltip({
       }}
     >
       <div style={{ marginBottom: 4, fontWeight: 600 }}>{labelText}</div>
-      {techEntries.map((entry: any) => {
+      {variantEntries.map((entry: any) => {
         const pct = entry.value as number
         const kg = (pct * tanApp) / 100
         return (
@@ -78,7 +79,7 @@ function EmissionTooltip({
 }
 
 interface IncorpMarker {
-  ct: number
+  hour: number
   info: { mode: string; time_h: number }
 }
 
@@ -90,6 +91,7 @@ interface DetailChartProps {
 
 export default function DetailChart({ data, day, formData }: DetailChartProps) {
   const scenario = data.scenarios.find((s) => s.day === day)
+  const variantLabels = data.variant_labels
 
   const weatherByTime = useMemo(() => {
     const m = new Map<string, WeatherPoint>()
@@ -102,49 +104,49 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     if (!scenario) return []
     const startMs = new Date(scenario.start).getTime()
 
-    const byCt: Record<number, Record<string, any>> = {}
-    for (const tech of TECHNIQUES) {
-      const t = scenario.techniques[tech]
+    const byHour: Record<number, Record<string, any>> = {}
+    for (const label of variantLabels) {
+      const t = scenario.variants[label]
       if (!t) continue
       for (const p of t.hourly) {
-        if (!byCt[p.ct]) {
-          const tsMs = startMs + p.ct * 3600 * 1000
+        if (!byHour[p.hour]) {
+          const tsMs = startMs + p.hour * 3600 * 1000
           const d = new Date(tsMs)
           const pad = (n: number) => String(n).padStart(2, '0')
           const timeIso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
           const w = weatherByTime.get(timeIso)
-          byCt[p.ct] = {
-            ct: p.ct,
-            label: formatTimeAxis(p.ct),
+          byHour[p.hour] = {
+            hour: p.hour,
+            label: formatTimeAxis(p.hour),
             air_temp: w ? +w.air_temp.toFixed(1) : null,
             wind_kmh: w ? +(w.wind_speed * 3.6).toFixed(1) : null,
             rain_rate: w ? +w.rain_rate.toFixed(2) : 0,
           }
         }
-        byCt[p.ct][tech] = +(p.er * 100).toFixed(2)
+        byHour[p.hour][label] = +(p.er * 100).toFixed(2)
       }
     }
-    return Object.values(byCt).sort((a, b) => a.ct - b.ct)
-  }, [scenario, weatherByTime])
+    return Object.values(byHour).sort((a, b) => a.hour - b.hour)
+  }, [scenario, variantLabels, weatherByTime])
 
   const detailMax = useMemo(() => {
     let m = 0
     for (const row of detailData as any[]) {
-      for (const tech of TECHNIQUES) {
-        const v = (row[tech] ?? 0) as number
+      for (const label of variantLabels) {
+        const v = (row[label] ?? 0) as number
         if (v > m) m = v
       }
     }
     return niceMax(m)
-  }, [detailData])
+  }, [detailData, variantLabels])
 
   const incorpMarker: IncorpMarker | null = useMemo(() => {
-    if (formData.incorpTime === null) return null
-    const targetCt = Math.max(1, Math.ceil(formData.incorpTime))
-    const row = (detailData as any[]).find((r) => r.ct === targetCt)
+    if (formData.incorp === 'none') return null
+    const targetHour = Math.max(1, Math.ceil(formData.incorpTime))
+    const row = (detailData as any[]).find((r) => r.hour === targetHour)
     if (!row) return null
     return {
-      ct: targetCt,
+      hour: targetHour,
       info: { mode: formData.incorp, time_h: formData.incorpTime },
     }
   }, [detailData, formData.incorp, formData.incorpTime])
@@ -170,12 +172,12 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
               <XAxis
-                dataKey="ct"
+                dataKey="hour"
                 type="number"
                 scale="log"
                 domain={[1, 168]}
                 ticks={[1, 2, 4, 8, 24, 48, 96, 168]}
-                tickFormatter={(ct: number) => formatTimeAxis(ct)}
+                tickFormatter={(h: number) => formatTimeAxis(h)}
                 stroke="#94a3b8"
                 tick={{ fontSize: 10 }}
               />
@@ -197,40 +199,44 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   ((v * formData.tanApp) / 100).toFixed(1)
                 }
               />
-            <Tooltip
-              content={
-                <EmissionTooltip tanApp={formData.tanApp} labelFormatter={fmtLabel} />
-              }
-            />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            {TECHNIQUES.map((tech) => (
-              <Line
-                key={tech}
-                type="monotone"
-                dataKey={tech}
-                yAxisId="left"
-                stroke={TECH_COLORS[tech]}
-                dot={false}
-                strokeWidth={2}
+              <Tooltip
+                content={
+                  <EmissionTooltip
+                    tanApp={formData.tanApp}
+                    labelFormatter={fmtLabel}
+                    variantLabels={variantLabels}
+                  />
+                }
               />
-            ))}
-            {incorpMarker && (
-              <ReferenceLine
-                yAxisId="left"
-                x={incorpMarker.ct}
-                stroke="#fbbf24"
-                strokeDasharray="4 2"
-                strokeWidth={2}
-                label={{
-                  value: `Incorp (${incorpMarker.info.mode}, ${incorpMarker.info.time_h}h)`,
-                  position: 'insideTopRight',
-                  fill: '#fbbf24',
-                  fontSize: 10,
-                }}
-              />
-            )}
-          </LineChart>
-        </ResponsiveContainer>
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {variantLabels.map((label, i) => (
+                <Line
+                  key={label}
+                  type="monotone"
+                  dataKey={label}
+                  yAxisId="left"
+                  stroke={VARIANT_COLORS[i % VARIANT_COLORS.length]}
+                  dot={false}
+                  strokeWidth={2}
+                />
+              ))}
+              {incorpMarker && (
+                <ReferenceLine
+                  yAxisId="left"
+                  x={incorpMarker.hour}
+                  stroke="#fbbf24"
+                  strokeDasharray="4 2"
+                  strokeWidth={2}
+                  label={{
+                    value: `Incorp (${incorpMarker.info.mode}, ${incorpMarker.info.time_h}h)`,
+                    position: 'insideTopRight',
+                    fill: '#fbbf24',
+                    fontSize: 10,
+                  }}
+                />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
         </div>
         <div className="flex items-center justify-center w-5 shrink-0">
           <span className="text-[10px] text-slate-400" style={{ writingMode: 'vertical-rl' }}>
@@ -251,76 +257,76 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
               data={detailData}
               margin={{ top: 5, right: 0, left: 0, bottom: 5 }}
             >
-            <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-            <XAxis
-              dataKey="ct"
-              type="number"
-              scale="log"
-              domain={[1, 168]}
-              ticks={[1, 2, 4, 8, 24, 48, 96, 168]}
-              tickFormatter={(ct: number) => formatTimeAxis(ct)}
-              stroke="#94a3b8"
-              tick={{ fontSize: 10 }}
-            />
-            <YAxis
-              yAxisId="left"
-              stroke="#94a3b8"
-              tick={{ fontSize: 10 }}
-            />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              stroke="#94a3b8"
-              tick={{ fontSize: 10 }}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#1e293b',
-                border: '1px solid #475569',
-                borderRadius: '8px',
-              }}
-              labelStyle={{ color: '#e2e8f0' }}
-              labelFormatter={fmtLabel}
-            />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="rain_rate"
-              name="Rain (mm/h)"
-              stroke="#3b82f6"
-              dot={false}
-              strokeWidth={2}
-            />
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="air_temp"
-              name="Air temp (°C)"
-              stroke="#f97316"
-              dot={false}
-              strokeWidth={2}
-            />
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="wind_kmh"
-              name="Wind (km/h)"
-              stroke="#22d3ee"
-              dot={false}
-              strokeWidth={2}
-            />
-            {incorpMarker && (
-              <ReferenceLine
+              <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
+              <XAxis
+                dataKey="hour"
+                type="number"
+                scale="log"
+                domain={[1, 168]}
+                ticks={[1, 2, 4, 8, 24, 48, 96, 168]}
+                tickFormatter={(h: number) => formatTimeAxis(h)}
+                stroke="#94a3b8"
+                tick={{ fontSize: 10 }}
+              />
+              <YAxis
                 yAxisId="left"
-                x={incorpMarker.ct}
-                stroke="#fbbf24"
-                strokeDasharray="4 2"
+                stroke="#94a3b8"
+                tick={{ fontSize: 10 }}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                stroke="#94a3b8"
+                tick={{ fontSize: 10 }}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #475569',
+                  borderRadius: '8px',
+                }}
+                labelStyle={{ color: '#e2e8f0' }}
+                labelFormatter={fmtLabel}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="rain_rate"
+                name="Rain (mm/h)"
+                stroke="#3b82f6"
+                dot={false}
                 strokeWidth={2}
               />
-            )}
-          </ComposedChart>
-        </ResponsiveContainer>
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="air_temp"
+                name="Air temp (°C)"
+                stroke="#f97316"
+                dot={false}
+                strokeWidth={2}
+              />
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="wind_kmh"
+                name="Wind (km/h)"
+                stroke="#22d3ee"
+                dot={false}
+                strokeWidth={2}
+              />
+              {incorpMarker && (
+                <ReferenceLine
+                  yAxisId="left"
+                  x={incorpMarker.hour}
+                  stroke="#fbbf24"
+                  strokeDasharray="4 2"
+                  strokeWidth={2}
+                />
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
         </div>
         <div className="flex items-center justify-center w-5 shrink-0">
           <span className="text-[10px] text-slate-400" style={{ writingMode: 'vertical-rl' }}>
