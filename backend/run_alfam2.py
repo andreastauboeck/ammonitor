@@ -40,6 +40,7 @@ def run_alfam2(
     weather_hourly: list[dict] = None,
     start_dates_iso: list[str] = None,
 ) -> dict:
+    """Public entry point: validate and delegate to the R runner."""
     return _run_alfam2_r(
         variable=variable,
         variants=variants,
@@ -57,7 +58,7 @@ def run_alfam2(
 
 def _run_alfam2_r(
     variable: VariableName,
-    variants: list[tuple[any, str]],
+    variants: list[tuple[Any, str]],
     app_mthd: str,
     man_dm: float,
     man_ph: float,
@@ -68,6 +69,7 @@ def _run_alfam2_r(
     weather_hourly: list[dict],
     start_dates_iso: list[str],
 ) -> dict:
+    """Invoke the ALFAM2 R script with the given parameters."""
     min_needed = (N_SCENARIOS - 1) * 24 + application_hour + SCENARIO_HOURS
     if weather_hourly is not None and len(weather_hourly) < min_needed:
         raise ValueError(
@@ -111,26 +113,27 @@ def _run_alfam2_r(
             "wind.sqrt",
             "rain.rate",
         ]
-        with open(input_file, "w", newline="") as f:
+        with open(input_file, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(rows)
 
         r_script = SCRIPT_DIR / "run_alfam2.R"
-        result = subprocess.run(
+        proc = subprocess.run(
             ["Rscript", str(r_script), input_file, output_file],
             capture_output=True,
             text=True,
             timeout=120,
+            check=False,
         )
 
-        if result.returncode != 0:
-            raise RuntimeError(f"R script failed: {result.stderr}")
+        if proc.returncode != 0:
+            raise RuntimeError(f"R script failed: {proc.stderr}")
 
         if not os.path.exists(output_file):
             raise FileNotFoundError(f"Output file not created: {output_file}")
 
-        with open(output_file, "r") as f:
+        with open(output_file, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             out_rows = list(reader)
 
@@ -143,7 +146,7 @@ def _run_alfam2_r(
 def _parse_app_hour(val) -> int:
     s = str(val).strip()
     if ":" in s:
-        return int(s.split(":")[0])
+        return int(s.split(":", maxsplit=1)[0])
     return int(float(s))
 
 
@@ -153,7 +156,7 @@ def _parse_float(val) -> float:
 
 def _build_input_rows(
     variable: VariableName,
-    variants: list[tuple[any, str]],
+    variants: list[tuple[Any, str]],
     app_mthd: str,
     man_dm: float,
     man_ph: float,
@@ -163,11 +166,12 @@ def _build_input_rows(
     incorp_time: float,
     weather_hourly: list[dict],
 ) -> list[dict]:
+    """Build the ALFAM2 input CSV rows for all scenario-variant combinations."""
     rows: list[dict] = []
     tan_app = 60.0  # Fixed reference; does not affect er (relative emission)
 
     for day_idx in range(N_SCENARIOS):
-        for var_idx, (var_value, var_label) in enumerate(variants):
+        for var_idx, (var_value, _var_label) in enumerate(variants):
             scenario_id = f"d{day_idx}_v{var_idx}"
 
             # Determine per-row values based on which variable is active
@@ -260,7 +264,7 @@ def _parse_output(
         start_iso = start_dates_iso[day_idx] if day_idx < len(start_dates_iso) else ""
         variants_out: dict[str, dict] = {}
 
-        for var_idx, (var_value, var_label) in enumerate(variants):
+        for var_idx, (_var_value, var_label) in enumerate(variants):
             sid = f"d{day_idx}_v{var_idx}"
             rows = by_scenario.get(sid, [])
             hourly: list[dict] = []
@@ -306,7 +310,11 @@ if __name__ == "__main__":
     fake_dates = [f"2026-04-{20+i:02d}T00:00:00" for i in range(7)]
     result = run_alfam2(
         variable="app.mthd",
-        variants=[("bc", "Broadcast"), ("th", "Trailing hose"), ("ts", "Trailing shoe"), ("os", "Open slot"), ("cs", "Closed slot")],
+        variants=[
+            ("bc", "Broadcast"), ("th", "Trailing hose"),
+            ("ts", "Trailing shoe"), ("os", "Open slot"),
+            ("cs", "Closed slot"),
+        ],
         app_mthd="th",
         weather_hourly=fake_weather,
         start_dates_iso=fake_dates,

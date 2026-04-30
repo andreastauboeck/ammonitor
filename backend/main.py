@@ -38,6 +38,7 @@ VariableName = Literal[
 
 
 class VariantDef(BaseModel):
+    """A single variant: value sent to ALFAM2 and display label."""
     value: Any
     label: str
 
@@ -65,6 +66,7 @@ CALCULATE_EXAMPLE = {
 
 
 class CalculateInput(BaseModel):
+    """Request body for the /api/calculate endpoint."""
     lat: float
     lng: float
     variable: VariableName = "app.mthd"
@@ -89,6 +91,7 @@ class CalculateInput(BaseModel):
 
 @app.get("/api/status")
 def get_status() -> dict[str, str]:
+    """Return backend health, version and environment."""
     return {
         "status": "ok",
         "version": VERSION,
@@ -107,6 +110,7 @@ def get_status() -> dict[str, str]:
         }
     })
 def calculate(input_data: CalculateInput) -> dict:
+    """Run ALFAM2 emission prediction for all variants across 7 days."""
     variable = input_data.variable
 
     if variable == "incorp" and input_data.incorp == "none":
@@ -118,7 +122,7 @@ def calculate(input_data: CalculateInput) -> dict:
     try:
         weather = fetch_weather(input_data.lat, input_data.lng, input_data.timezone)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Weather fetch failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Weather fetch failed: {e}") from e
 
     first_hour_iso = weather["hourly"][0]["time_iso"]
     first_date = datetime.fromisoformat(first_hour_iso).date()
@@ -167,10 +171,12 @@ if _FRONTEND_DIST.is_dir():
 
     @app.get("/", include_in_schema=False)
     def serve_index() -> FileResponse:
+        """Serve the SPA entry point."""
         return FileResponse(_FRONTEND_DIST / "index.html")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def serve_spa(full_path: str) -> FileResponse:
+        """Serve a static asset or fall back to the SPA entry point."""
         candidate = _FRONTEND_DIST / full_path
         if candidate.is_file():
             return FileResponse(candidate)

@@ -16,7 +16,7 @@ from threading import Lock
 FORECAST_DAYS = 14
 HOURS_NEEDED = 6 * 24 + 23 + 168  # 335
 
-# Cache TTL in seconds (10 minutes)
+# Cache TTL in seconds (30 minutes)
 CACHE_TTL = 1800
 
 # Rounding precision for the cache key to group nearby coordinates
@@ -86,7 +86,7 @@ def _fetch_from_open_meteo(lat: float, lng: float, timezone_name: str) -> dict:
     }
     url = "https://api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(params)
 
-    req = urllib.request.Request(url, headers={"User-Agent": "ammonitor/0.1"})
+    req = urllib.request.Request(url, headers={"User-Agent": "ammonitor/0.2"})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             body = resp.read().decode("utf-8")
@@ -98,6 +98,10 @@ def _fetch_from_open_meteo(lat: float, lng: float, timezone_name: str) -> dict:
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Invalid JSON from Open-Meteo: {e}") from e
 
+    return _parse_om_response(payload)
+
+
+def _parse_om_response(payload: dict) -> dict:
     hourly = payload.get("hourly") or {}
     times = hourly.get("time") or []
     temps = hourly.get("temperature_2m") or []
@@ -112,10 +116,9 @@ def _fetch_from_open_meteo(lat: float, lng: float, timezone_name: str) -> dict:
 
     out_hourly = []
     for i in range(min(len(times), FORECAST_DAYS * 24)):
-        t = times[i]
         out_hourly.append(
             {
-                "time_iso": t,
+                "time_iso": times[i],
                 "air_temp": _safe_num(temps[i] if i < len(temps) else None, 15.0),
                 "wind_speed": _safe_num(winds[i] if i < len(winds) else None, 2.7),
                 "rain_rate": _safe_num(rains[i] if i < len(rains) else None, 0.0),
