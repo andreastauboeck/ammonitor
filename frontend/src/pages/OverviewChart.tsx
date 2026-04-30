@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BarChart,
   Bar,
@@ -6,7 +6,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts'
 import {
@@ -30,24 +29,38 @@ function EmissionTooltip({ active, payload, label, tanApp }: EmissionTooltipProp
       style={{
         backgroundColor: '#1e293b',
         border: '1px solid #475569',
-        borderRadius: '8px',
-        padding: '8px 10px',
-        fontSize: '12px',
+        borderRadius: '6px',
+        padding: '4px 6px',
+        fontSize: '10px',
         color: '#e2e8f0',
+        lineHeight: '1.25',
       }}
     >
-      <div style={{ marginBottom: 4, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontWeight: 600 }}>{label}</div>
       {payload.map((entry: any) => {
         const pct = entry.value as number
         const kg = (pct * tanApp) / 100
         return (
-          <div key={entry.dataKey} style={{ color: entry.color, lineHeight: '1.4' }}>
-            {entry.dataKey}: {pct.toFixed(2)}% ({kg.toFixed(2)} kg/ha)
+          <div key={entry.dataKey} style={{ color: entry.color }}>
+            {entry.dataKey}: {pct.toFixed(1)}% ({kg.toFixed(1)} kg/ha)
           </div>
         )
       })}
     </div>
   )
+}
+
+function useIsTouch() {
+  const [isTouch, setIsTouch] = useState(false)
+  useEffect(() => {
+    const check = () =>
+      typeof window !== 'undefined' &&
+      ('ontouchstart' in window ||
+        navigator.maxTouchPoints > 0 ||
+        window.matchMedia('(pointer: coarse)').matches)
+    setIsTouch(check())
+  }, [])
+  return isTouch
 }
 
 interface OverviewChartProps {
@@ -58,6 +71,7 @@ interface OverviewChartProps {
 
 export default function OverviewChart({ data, formData, onDayClick }: OverviewChartProps) {
   const variantLabels = data.variant_labels
+  const isTouch = useIsTouch()
 
   const overviewData = useMemo(() => {
     return data.days.map((d) => {
@@ -90,69 +104,119 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
 
   return (
     <>
+      {/* Fixed legend */}
+      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-300 mb-1 shrink-0">
+        {variantLabels.map((label, i) => (
+          <span key={label} className="inline-flex items-center gap-1">
+            <span
+              className="inline-block w-3 h-3"
+              style={{ backgroundColor: VARIANT_COLORS[i % VARIANT_COLORS.length] }}
+            />
+            {label}
+          </span>
+        ))}
+      </div>
+
       <div className="flex-1 min-h-0 flex">
-        <div className="flex items-center justify-center w-5 shrink-0">
-          <span className="text-[10px] text-slate-400" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-            NH3 loss (% of TAN)
-          </span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={overviewData}
-              margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
-              barCategoryGap="10%"
-              barGap={2}
-              onClick={(e: any) => {
-                if (e && typeof e.activeTooltipIndex === 'number') {
-                  const row = overviewData[e.activeTooltipIndex]
-                  if (row) onDayClick(row.day)
-                }
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-              <XAxis dataKey="dayLabel" stroke="#94a3b8" tick={{ fontSize: 11 }} />
-              <YAxis
-                key={`left-${overviewMax}`}
-                yAxisId="left"
-                stroke="#94a3b8"
-                tick={{ fontSize: 10 }}
-                domain={[0, overviewMax]}
-              />
-              <YAxis
-                key={`right-${overviewMax}-${formData.tanApp}`}
-                yAxisId="right"
-                orientation="right"
-                stroke="#94a3b8"
-                tick={{ fontSize: 10 }}
-                domain={[0, overviewMax]}
-                tickFormatter={(v: number) =>
-                  ((v * formData.tanApp) / 100).toFixed(1)
-                }
-              />
-              <Tooltip content={<EmissionTooltip tanApp={formData.tanApp} />} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              {variantLabels.map((label, i) => (
-                <Bar
-                  key={label}
-                  dataKey={label}
+        {/* Left fixed column: vertical label + left y-axis */}
+        <div className="flex shrink-0 h-full">
+          <div className="flex items-center justify-center w-3">
+            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+              NH3 loss (% of TAN)
+            </span>
+          </div>
+          <div style={{ width: 30 }} className="h-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={overviewData}
+                margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
+              >
+                <YAxis
+                  key={`left-${overviewMax}`}
                   yAxisId="left"
-                  fill={VARIANT_COLORS[i % VARIANT_COLORS.length]}
-                  cursor="pointer"
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 9 }}
+                  domain={[0, overviewMax]}
+                  width={30}
                 />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
+                <XAxis dataKey="dayLabel" hide />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-        <div className="flex items-center justify-center w-5 shrink-0">
-          <span className="text-[10px] text-slate-400" style={{ writingMode: 'vertical-rl' }}>
-            NH3 loss (kg/ha)
-          </span>
+
+        {/* Middle scrollable column */}
+        <div className="flex-1 min-w-0 overflow-x-auto">
+          <div className="h-full min-w-[334px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={overviewData}
+                margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
+                barCategoryGap="10%"
+                barGap={2}
+                onClick={(e: any) => {
+                  if (e && typeof e.activeTooltipIndex === 'number') {
+                    const row = overviewData[e.activeTooltipIndex]
+                    if (row) onDayClick(row.day)
+                  }
+                }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
+                <XAxis dataKey="dayLabel" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="left" domain={[0, overviewMax]} hide />
+                <YAxis yAxisId="right" orientation="right" domain={[0, overviewMax]} hide />
+                <Tooltip
+                  content={isTouch ? <></> : <EmissionTooltip tanApp={formData.tanApp} />}
+                  cursor={isTouch ? false : { fill: 'rgba(148, 163, 184, 0.1)' }}
+                />
+                {variantLabels.map((label, i) => (
+                  <Bar
+                    key={label}
+                    dataKey={label}
+                    yAxisId="left"
+                    fill={VARIANT_COLORS[i % VARIANT_COLORS.length]}
+                    cursor="pointer"
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Right fixed column: right y-axis + vertical label */}
+        <div className="flex shrink-0 h-full">
+          <div style={{ width: 30 }} className="h-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={overviewData}
+                margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
+              >
+                <YAxis
+                  key={`right-${overviewMax}-${formData.tanApp}`}
+                  yAxisId="right"
+                  orientation="right"
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 9 }}
+                  domain={[0, overviewMax]}
+                  tickFormatter={(v: number) =>
+                    ((v * formData.tanApp) / 100).toFixed(1)
+                  }
+                  width={30}
+                />
+                <XAxis dataKey="dayLabel" hide />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex items-center justify-center w-3">
+            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+              NH3 loss (kg/ha)
+            </span>
+          </div>
         </div>
       </div>
       {overviewData.length > 0 && (
         <p className="text-xs text-slate-500 mt-2">
-          Click a day group to see hourly details.
+          {isTouch ? 'Tap' : 'Click'} a day group to see hourly details.
         </p>
       )}
     </>
