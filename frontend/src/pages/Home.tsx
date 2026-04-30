@@ -223,7 +223,7 @@ export default function Home() {
             Ammonitor helps farmers and advisors make informed decisions about manure application.
             By combining real-time weather forecasts with the ALFAM2 emission model, it predicts
             how much ammonia (NH₃) will be lost after spreading — and how different application
-            strategies compare over the next 7 days.
+            strategies compare over the next 8 days.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
@@ -237,7 +237,7 @@ export default function Home() {
             </div>
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
               <div className="text-amber-400 font-semibold mb-1">Instant results</div>
-              <p className="text-xs text-slate-400">Get a 7-day emission profile in seconds — no setup, no installation, no cost.</p>
+              <p className="text-xs text-slate-400">Get an 8-day emission profile in seconds — no setup, no installation, no cost.</p>
             </div>
           </div>
 

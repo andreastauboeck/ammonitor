@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Ammonia (NH3) emission prediction and monitoring decision-support tool for agriculture. Uses the ALFAM2 model (R package) driven by weather forecasts (Open-Meteo) to predict NH3 loss from manure application across 7 days, comparing variants of application parameters.
+Ammonia (NH3) emission prediction and monitoring decision-support tool for agriculture. Uses the ALFAM2 model (R package) driven by weather forecasts (Open-Meteo) to predict NH3 loss from manure application across 8 days, comparing variants of application parameters.
 
 **Version:** See `VERSION` file at repo root (currently `0.2.0`)
 
@@ -30,7 +30,7 @@ Backend main.py /api/calculate:
   4. Calls run_alfam2(...)
 
 run_alfam2.py:
-  1. Builds input CSV: 7 days × N variants × 168 hours per row
+  1. Builds input CSV: 8 days × N variants × 168 hours per row
   2. Calls Rscript run_alfam2.R <input.csv> <output.csv>
   3. run_alfam2.R calls ALFAM2::alfam2()
   4. Parses output CSV into {variant_labels, days[{day, start, variants[{final_loss_pct, hourly}]}]}
@@ -59,7 +59,7 @@ Frontend renders:
 | `frontend/src/pages/types.ts` | Shared types, constants, utilities | `VARIANT_DEFS`, `INPUT_LABELS`, `DEFAULT_FORM_DATA`, `VARIANT_COLORS`, `ApiResponse`, `FormData` |
 | `frontend/src/pages/Home.tsx` | Leaflet map location selector | Search + click → navigate to calculation |
 | `frontend/src/pages/Calculation.tsx` | Parameter form + chart orchestration | Form state, API calls, URL param sync |
-| `frontend/src/pages/OverviewChart.tsx` | 7-day grouped bar chart | Click bar → detail view |
+| `frontend/src/pages/OverviewChart.tsx` | 8-day grouped bar chart | Click bar → detail view |
 | `frontend/src/pages/DetailChart.tsx` | Hourly line chart + weather | Log-scale x-axis, app.time offset, incorp markers |
 | `Dockerfile` | Multi-stage production build | r-base → frontend-build → runtime |
 | `fly.toml` | Fly.io deployment config | App: ammonitor, region: fra, port: 8000 |

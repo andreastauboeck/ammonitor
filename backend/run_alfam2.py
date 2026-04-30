@@ -19,7 +19,7 @@ from typing import Any, Literal
 
 SCRIPT_DIR = Path(__file__).parent
 
-N_DAYS = 7
+N_DAYS = 8
 PREDICTION_HOURS = 168
 
 VariableName = Literal[

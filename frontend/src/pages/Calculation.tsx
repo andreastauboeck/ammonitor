@@ -387,8 +387,8 @@ export default function Calculation() {
               </h2>
               {selectedDay !== null && (
                 <button
-                  onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.min(6, selectedDay + 1)}`, { replace: true })}
-                  disabled={selectedDay >= 6}
+                  onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.min((data?.days.length ?? 1) - 1, selectedDay + 1)}`, { replace: true })}
+                  disabled={!data || selectedDay >= data.days.length - 1}
                   className="p-2 ml-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
                   aria-label="Next day"
                 >

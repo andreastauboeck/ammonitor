@@ -134,7 +134,7 @@ def calculate(input_data: CalculateInput) -> dict:
         datetime.combine(
             first_date + timedelta(days=i), dt_time(hour=app_hour)
         ).isoformat(timespec="minutes")
-        for i in range(7)
+        for i in range(8)
     ]
 
     variant_tuples = [(v.value, v.label) for v in input_data.variants]
