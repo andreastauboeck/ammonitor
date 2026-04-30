@@ -165,11 +165,11 @@ if _FRONTEND_DIST.is_dir():
     if _ASSETS_DIR.is_dir():
         app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
 
-    @app.get("/")
+    @app.get("/", include_in_schema=False)
     def serve_index() -> FileResponse:
         return FileResponse(_FRONTEND_DIST / "index.html")
 
-    @app.get("/{full_path:path}")
+    @app.get("/{full_path:path}", include_in_schema=False)
     def serve_spa(full_path: str) -> FileResponse:
         candidate = _FRONTEND_DIST / full_path
         if candidate.is_file():
