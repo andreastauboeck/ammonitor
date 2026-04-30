@@ -447,6 +447,12 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           </span>
         </div>
       </div>
+      <p className="text-[10px] text-slate-500 mt-1">
+        Weather data by{' '}
+        <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">
+          Open-Meteo.com
+        </a>
+      </p>
     </>
   )
 }

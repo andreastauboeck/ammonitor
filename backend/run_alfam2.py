@@ -271,8 +271,7 @@ def _parse_output(
                 except (ValueError, TypeError):
                     continue
                 er = _safe_float(r.get("er"))
-                j = _safe_float(r.get("j"))
-                hourly.append({"hour": hour, "er": er, "j": j})
+                hourly.append({"hour": hour, "er": er})
                 final_er = er
 
             hourly.sort(key=lambda x: x["hour"])

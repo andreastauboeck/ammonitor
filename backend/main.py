@@ -29,7 +29,7 @@ app.add_middleware(
         "ammonitor.fly.dev",
         "ammonitor.online",
         "www.ammonitor.online",
-    ],
+    ] if ENVIRONMENT == "production" else ["*"],
 )
 
 VariableName = Literal[
@@ -40,6 +40,28 @@ VariableName = Literal[
 class VariantDef(BaseModel):
     value: Any
     label: str
+
+
+CALCULATE_EXAMPLE = {
+    "lat": 48.23,
+    "lng": 14.70,
+    "variable": "app.mthd",
+    "variants": [
+        {"value": "bc", "label": "Broadcast"},
+        {"value": "th", "label": "Trailing hose"},
+        {"value": "ts", "label": "Trailing shoe"},
+        {"value": "os", "label": "Open slot"},
+        {"value": "cs", "label": "Closed slot"},
+    ],
+    "app_mthd": "th",
+    "man_dm": 6.0,
+    "man_ph": 7.5,
+    "man_source": "cattle",
+    "application_time": "12:00",
+    "incorp": "none",
+    "incorp_time": 4,
+    "timezone": "Europe/Vienna",
+}
 
 
 class CalculateInput(BaseModel):
@@ -58,6 +80,12 @@ class CalculateInput(BaseModel):
     incorp_time: float = Field(1.0, description="Incorporation time (hours)")
     timezone: str = Field("auto", description="IANA timezone name for weather")
 
+    model_config = {
+        "json_schema_extra": {
+            "example": CALCULATE_EXAMPLE,
+        }
+    }
+
 
 @app.get("/api/status")
 def get_status() -> dict[str, str]:
@@ -68,7 +96,16 @@ def get_status() -> dict[str, str]:
     }
 
 
-@app.post("/api/calculate")
+@app.post("/api/calculate",
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "example": CALCULATE_EXAMPLE,
+                }
+            }
+        }
+    })
 def calculate(input_data: CalculateInput) -> dict:
     variable = input_data.variable
 
