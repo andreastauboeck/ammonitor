@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import {
   type ApiResponse,
@@ -13,8 +13,11 @@ import {
 import OverviewChart from './OverviewChart'
 import DetailChart from './DetailChart'
 
-const VARIABLE_OPTIONS: VariableName[] = [
-  'app.mthd', 'app.time', 'man.dm', 'man.ph', 'incorp.depth', 'incorp','man.source',
+const VARIABLE_OPTIONS_BEFORE_INCORP: VariableName[] = [
+  'app.mthd', 'app.time', 'man.dm',
+]
+const VARIABLE_OPTIONS_AFTER_INCORP: VariableName[] = [
+  'man.source', 'man.ph',
 ]
 
 function serializeForm(formData: FormData): Record<string, string> {
@@ -64,6 +67,7 @@ export default function Calculation() {
   const [error, setError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState<FormData>(() => deserializeForm(searchParams))
+  const [showRadioHint, setShowRadioHint] = useState(false)
 
   const canVaryIncorp = formData.incorp !== 'none'
 
@@ -152,9 +156,21 @@ export default function Calculation() {
     (name: string, value: any) => {
       setFormData((prev) => {
         const next = { ...prev, [name]: value }
-        // If incorp depth switches to none and variable was incorp, fall back
-        if (name === 'incorp' && value === 'none' && prev.variable === 'incorp') {
-          next.variable = 'app.mthd'
+        if (name === 'incorp') {
+          if (value === 'none') {
+            next.incorpTime = 0
+            if (prev.variable === 'incorp' || prev.variable === 'incorp.depth') {
+              next.variable = 'app.mthd'
+            }
+          } else if (prev.incorp === 'none') {
+            next.incorpTime = 4
+          }
+        }
+        if (name === 'incorpTime' && value === 0) {
+          next.incorp = 'none'
+          if (prev.variable === 'incorp' || prev.variable === 'incorp.depth') {
+            next.variable = 'app.mthd'
+          }
         }
         return next
       })
@@ -165,7 +181,9 @@ export default function Calculation() {
   const handleVariableChange = useCallback(
     (variable: VariableName) => {
       setFormData((prev) => {
-        if (variable === 'incorp' && prev.incorp === 'none') return prev
+        if (variable === 'incorp' && prev.incorp === 'none') {
+          return { ...prev, variable, incorp: 'shallow' }
+        }
         return { ...prev, variable }
       })
     },
@@ -195,7 +213,32 @@ export default function Calculation() {
 
     if (variable === 'incorp' && !canVaryIncorp) {
       return (
-        <span className="text-xs text-slate-500 italic">Set incorp depth first</span>
+        <select
+          value={0}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value)
+            setFormData((prev) => {
+              if (v === 0) {
+                const next: any = { ...prev, incorpTime: 0, incorp: 'none' }
+                if (prev.variable === 'incorp') next.variable = 'app.mthd'
+                return next
+              }
+              return { ...prev, incorpTime: v, incorp: 'shallow' }
+            })
+          }}
+          disabled={isDisabled}
+          className={`w-full px-2 py-1.5 text-sm rounded-lg border focus:outline-none focus:border-indigo-500 ${
+            isDisabled
+              ? 'bg-slate-900/50 border-slate-700 text-slate-500 cursor-not-allowed'
+              : 'bg-slate-700 border-slate-600'
+          }`}
+        >
+          {defs.map((d) => (
+            <option key={String(d.value)} value={String(d.value)}>
+              {d.label}{d.category ? ` — ${d.category}` : ''}
+            </option>
+          ))}
+        </select>
       )
     }
 
@@ -280,88 +323,147 @@ export default function Calculation() {
           <div className={`w-full md:w-1/3 lg:w-1/4 bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-700 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
             <div className="flex items-center gap-2 mb-3">
               <h2 className="text-lg font-semibold">Parameters</h2>
-              <div className="flex items-center gap-1.5 ml-auto">
-                <label className="text-xs text-slate-400">TAN</label>
-                <select
-                  value={formData.tanApp}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, tanApp: parseFloat(e.target.value) }))
-                  }
-                  className="px-2 py-1 text-sm rounded-lg bg-slate-700 border border-slate-600 focus:outline-none focus:border-indigo-500"
+              <div className="ml-auto relative">
+                <button
+                  type="button"
+                  onClick={() => setShowRadioHint((v) => !v)}
+                  className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-400 transition-colors"
+                  aria-label="Radio button info"
                 >
-                  {TAN_PRESETS.map((v) => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
-                <span className="text-xs text-slate-500">kg/ha</span>
+                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border-2 border-current">
+                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  </span>
+                  = compare
+                </button>
+                {showRadioHint && (
+                  <div
+                    className="absolute right-0 top-full mt-1 z-20 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-xs text-slate-300 whitespace-nowrap shadow-lg"
+                    onClick={() => setShowRadioHint(false)}
+                  >
+                    Select a radio button to compare variants for that parameter
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
 
-              {/* Variable inputs with radio buttons */}
-              {VARIABLE_OPTIONS.map((variable) => {
-                if (variable === 'incorp' && !canVaryIncorp) return null
-                if (variable === 'incorp.depth' && formData.incorp === 'none') {
-                  // Show depth selector even when "none" to allow switching
-                }
-
-                const isVariable = formData.variable === variable
-                let currentValue: any
-                let onChange: (value: any) => void
-
-                switch (variable) {
-                  case 'app.mthd':
-                    currentValue = formData.appMthd
-                    onChange = (v) => handleFixedChange('appMthd', v)
-                    break
-                  case 'app.time':
-                    currentValue = formData.applicationTime
-                    onChange = (v) => handleFixedChange('applicationTime', v)
-                    break
-                  case 'man.dm':
-                    currentValue = formData.manDm
-                    onChange = (v) => handleFixedChange('manDm', v)
-                    break
-                  case 'man.ph':
-                    currentValue = formData.manPh
-                    onChange = (v) => handleFixedChange('manPh', v)
-                    break
-                  case 'incorp':
-                    currentValue = formData.incorpTime
-                    onChange = (v) => handleFixedChange('incorpTime', v)
-                    break
-                  case 'incorp.depth':
-                    currentValue = formData.incorp
-                    onChange = (v) => handleFixedChange('incorp', v)
-                    break
-                  case 'man.source':
-                    currentValue = formData.manSource
-                    onChange = (v) => handleFixedChange('manSource', v)
-                    break
-                }
-
-                return (
-                  <div key={variable} className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="variable"
-                      checked={isVariable}
-                      onChange={() => handleVariableChange(variable)}
-                      disabled={variable === 'incorp' && !canVaryIncorp}
-                      className="shrink-0 accent-emerald-400"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <label className="block text-xs text-slate-400 mb-1">
-                        {INPUT_LABELS[variable]}
-                        {isVariable && (
-                          <span className="ml-1 text-emerald-400">varied</span>
-                        )}
-                      </label>
-                      {renderInput(variable, currentValue, onChange)}
-                    </div>
+              {/* TAN applied */}
+              <div className="flex items-center gap-2">
+                <div className="w-4" />
+                <div className="flex-1 min-w-0">
+                  <label className="block text-xs text-slate-400 mb-1">TAN applied</label>
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={formData.tanApp}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, tanApp: parseFloat(e.target.value) }))
+                      }
+                      className="flex-1 px-2 py-1.5 text-sm rounded-lg bg-slate-700 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                    >
+                      {TAN_PRESETS.map((v) => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-slate-500">kg/ha</span>
                   </div>
-                )
-              })}
+                </div>
+              </div>
+
+              {/* Variable inputs with radio buttons */}
+              {[VARIABLE_OPTIONS_BEFORE_INCORP, VARIABLE_OPTIONS_AFTER_INCORP].map((group, gi) => (
+                <React.Fragment key={gi}>
+                  {group.map((variable) => {
+                    const isVariable = formData.variable === variable
+                    let currentValue: any = undefined
+                    let onChange: (value: any) => void = () => {}
+
+                    switch (variable) {
+                      case 'app.mthd':
+                        currentValue = formData.appMthd
+                        onChange = (v) => handleFixedChange('appMthd', v)
+                        break
+                      case 'app.time':
+                        currentValue = formData.applicationTime
+                        onChange = (v) => handleFixedChange('applicationTime', v)
+                        break
+                      case 'man.dm':
+                        currentValue = formData.manDm
+                        onChange = (v) => handleFixedChange('manDm', v)
+                        break
+                      case 'man.ph':
+                        currentValue = formData.manPh
+                        onChange = (v) => handleFixedChange('manPh', v)
+                        break
+                      case 'man.source':
+                        currentValue = formData.manSource
+                        onChange = (v) => handleFixedChange('manSource', v)
+                        break
+                    }
+
+                    return (
+                      <div key={variable} className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="variable"
+                          checked={isVariable}
+                          onChange={() => handleVariableChange(variable)}
+                          className="shrink-0 accent-emerald-400"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <label className="block text-xs text-slate-400 mb-1">
+                            {INPUT_LABELS[variable]}
+                            {isVariable && (
+                              <span className="ml-1 text-emerald-400">varied</span>
+                            )}
+                          </label>
+                          {renderInput(variable, currentValue, onChange)}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {gi === 0 && (
+                    <div className="col-span-2 md:col-span-1 rounded-lg border border-slate-600 p-2">
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-1">Incorporation</div>
+                      <div className="grid grid-cols-2 md:grid-cols-2 gap-2">
+                        {(['incorp.depth', 'incorp'] as const).map((variable) => {
+                          const isVariable = formData.variable === variable
+                          let currentValue: any
+                          let onChange: (value: any) => void
+
+                          if (variable === 'incorp.depth') {
+                            currentValue = formData.incorp
+                            onChange = (v) => handleFixedChange('incorp', v)
+                          } else {
+                            currentValue = formData.incorpTime
+                            onChange = (v) => handleFixedChange('incorpTime', v)
+                          }
+
+                          return (
+                            <div key={variable} className="flex items-center gap-1">
+                              <input
+                                type="radio"
+                                name="variable"
+                                checked={isVariable}
+                                onChange={() => handleVariableChange(variable)}
+                                className="shrink-0 accent-emerald-400"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <label className="block text-xs text-slate-400 mb-1">
+                                  {variable === 'incorp.depth' ? 'Depth' : 'Time'}
+                                  {isVariable && (
+                                    <span className="ml-1 text-emerald-400">varied</span>
+                                  )}
+                                </label>
+                                {renderInput(variable, currentValue, onChange)}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </React.Fragment>
+              ))}
             </div>
           </div>
 

@@ -80,6 +80,7 @@ export const VARIANT_DEFS: Record<VariableName, { value: any; label: string; cat
     { value: 9.0, label: '9.0', category: 'High' },
   ],
   'incorp': [
+    { value: 0, label: 'None' },
     { value: 2, label: '2 h' },
     { value: 4, label: '4 h' },
     { value: 8, label: '8 h' },
@@ -117,7 +118,7 @@ export const DEFAULT_FORM_DATA: FormData = {
   manPh: 7.5,
   manSource: 'cattle',
   applicationTime: '12:00',
-  incorpTime: 4,
+  incorpTime: 0,
   incorp: 'none',
 }
 
