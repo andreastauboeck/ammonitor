@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -23,6 +24,21 @@ COORD_PRECISION = 2  # ~1.1 km
 
 _cache: dict[tuple, tuple[float, dict]] = {}
 _cache_lock = Lock()
+
+_SWEEP_INTERVAL = 300  # seconds between cache sweeps
+
+
+def _sweep_cache() -> None:
+    while True:
+        time.sleep(_SWEEP_INTERVAL)
+        now = time.time()
+        with _cache_lock:
+            expired = [k for k, (ts, _) in _cache.items() if now - ts >= CACHE_TTL]
+            for k in expired:
+                del _cache[k]
+
+
+threading.Thread(target=_sweep_cache, daemon=True, name="weather-cache-sweeper").start()
 
 
 def fetch_weather(lat: float, lng: float, timezone_name: str = "auto") -> dict:
