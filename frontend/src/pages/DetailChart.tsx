@@ -106,7 +106,7 @@ function makeTimeIso(d: Date): string {
 }
 
 export default function DetailChart({ data, day, formData }: DetailChartProps) {
-  const scenario = data.scenarios.find((s) => s.day === day)
+  const dayData = data.days.find((d) => d.day === day)
   const variantLabels = data.variant_labels
   const isAppTimeVariable = formData.variable === 'app.time'
 
@@ -135,8 +135,8 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   }, [data])
 
   const detailData = useMemo(() => {
-    if (!scenario) return []
-    const startDate = new Date(scenario.start)
+    if (!dayData) return []
+    const startDate = new Date(dayData.start)
     const baseDate = new Date(startDate)
     if (isAppTimeVariable) {
       baseDate.setHours(earliestAppHour, 0, 0, 0)
@@ -146,7 +146,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     const byKey: Record<string, Record<string, any>> = {}
 
     for (const label of variantLabels) {
-      const t = scenario.variants[label]
+      const t = dayData.variants[label]
       if (!t) continue
 
       let offset = 0
@@ -194,7 +194,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
       }
     }
     return Object.values(byKey).sort((a, b) => a.hour - b.hour)
-  }, [scenario, variantLabels, weatherByTime, isAppTimeVariable, variantOffsets, earliestAppHour])
+  }, [dayData, variantLabels, weatherByTime, isAppTimeVariable, variantOffsets, earliestAppHour])
 
   const maxHour = useMemo(() => {
     if (!detailData.length) return 168
@@ -256,15 +256,15 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     if (!isAppTimeVariable) {
       return (l: any) => typeof l === 'number' ? formatTimeAxis(l) : String(l)
     }
-    const baseDate = scenario ? new Date(scenario.start) : new Date()
+    const baseDate = dayData ? new Date(dayData.start) : new Date()
     baseDate.setHours(earliestAppHour, 0, 0, 0)
     return (l: any) => {
       if (typeof l !== 'number') return String(l)
       return formatHybridLabel(baseDate, l)
     }
-  }, [isAppTimeVariable, scenario, earliestAppHour])
+  }, [isAppTimeVariable, dayData, earliestAppHour])
 
-  if (!scenario) return null
+  if (!dayData) return null
 
   return (
     <>

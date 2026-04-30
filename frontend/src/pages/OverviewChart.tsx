@@ -60,18 +60,18 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
   const variantLabels = data.variant_labels
 
   const overviewData = useMemo(() => {
-    return data.scenarios.map((s) => {
+    return data.days.map((d) => {
       const row: Record<string, any> = {
-        day: s.day,
-        dayLabel: new Date(s.start).toLocaleDateString(undefined, {
+        day: d.day,
+        dayLabel: new Date(d.start).toLocaleDateString(undefined, {
           weekday: 'short',
           month: 'short',
           day: 'numeric',
         }),
-        start: s.start,
+        start: d.start,
       }
       for (const label of variantLabels) {
-        row[label] = s.variants[label]?.final_loss_pct ?? 0
+        row[label] = d.variants[label]?.final_loss_pct ?? 0
       }
       return row
     })

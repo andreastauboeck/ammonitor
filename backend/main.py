@@ -156,7 +156,7 @@ def calculate(input_data: CalculateInput) -> dict:
     return {
         "variable": variable,
         "variant_labels": result["variant_labels"],
-        "scenarios": result["scenarios"],
+        "days": result["days"],
         "weather": weather["hourly"],
     }
 

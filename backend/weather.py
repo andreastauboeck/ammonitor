@@ -10,7 +10,7 @@ import urllib.request
 from threading import Lock
 
 # How many days of hourly forecast we need:
-# For 7 scenarios (day 0..6) each spanning 7 days (168 h), and an application
+# For 7 days (day 0..6) each spanning 7 days (168 h), and an application
 # hour up to 23, we need at most 6*24 + 23 + 168 = 335 hours. Fetch 14 days
 # (336 hours) to cover this with a small buffer.
 FORECAST_DAYS = 14

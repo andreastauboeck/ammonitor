@@ -179,9 +179,9 @@ export default function Calculation() {
     [navigate, lat, lng],
   )
 
-  const selectedScenario =
+  const selectedDayData =
     selectedDay !== null && data
-      ? data.scenarios.find((s) => s.day === selectedDay)
+      ? data.days.find((d) => d.day === selectedDay)
       : null
 
   const renderInput = (
@@ -232,7 +232,7 @@ export default function Calculation() {
         <div className="max-w-full md:max-w-6xl mx-auto">
           {selectedDay !== null ? (
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => navigate(`/calculate/${lat}/${lng}`)}
               className="inline-flex items-center gap-2 text-slate-400 hover:text-slate-200"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -367,12 +367,36 @@ export default function Calculation() {
 
           {/* Chart panel */}
           <div className="w-full md:w-2/3 lg:w-3/4 bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-700">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">
+            <div className="flex items-center mb-3">
+              {selectedDay !== null && (
+                <button
+                  onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.max(0, selectedDay - 1)}`, { replace: true })}
+                  disabled={selectedDay <= 0}
+                  className="p-2 mr-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
+                  aria-label="Previous day"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              )}
+              <h2 className="text-lg font-semibold flex-1 text-center">
                 {selectedDay === null
                   ? `Overview NH3 loss by ${INPUT_LABELS[formData.variable]}`
-                  : `Detail losses on ${selectedScenario ? formatDayLabel(selectedScenario.start) : ''} by ${INPUT_LABELS[formData.variable]}`}
+                  : `Detail losses on ${selectedDayData ? formatDayLabel(selectedDayData.start) : ''} by ${INPUT_LABELS[formData.variable]}`}
               </h2>
+              {selectedDay !== null && (
+                <button
+                  onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.min(6, selectedDay + 1)}`, { replace: true })}
+                  disabled={selectedDay >= 6}
+                  className="p-2 ml-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
+                  aria-label="Next day"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              )}
             </div>
 
             {error && (

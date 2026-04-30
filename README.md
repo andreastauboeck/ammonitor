@@ -12,7 +12,7 @@ Powered by the [ALFAM2](https://projects.au.dk/alfam) emission model (Hafner et 
 
 - **Compare** up to 5 variants of any parameter (application technique, time, dry matter, pH, incorporation depth/time, manure source)
 - **Visualize** 7-day emission forecasts with hourly detail and aligned weather data
-- **Share** scenarios via URL — all parameters are serialized to the address bar
+- **Share** predictions via URL — all parameters are serialized to the address bar
 - **Compute** absolute losses (kg/ha) from your own TAN applied value
 
 ## 🛠️ Stack

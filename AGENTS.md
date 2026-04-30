@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Ammonia (NH3) emission prediction and monitoring decision-support tool for agriculture. Uses the ALFAM2 model (R package) driven by weather forecasts (Open-Meteo) to predict NH3 loss from manure application across 7-day scenarios, comparing variants of application parameters.
+Ammonia (NH3) emission prediction and monitoring decision-support tool for agriculture. Uses the ALFAM2 model (R package) driven by weather forecasts (Open-Meteo) to predict NH3 loss from manure application across 7 days, comparing variants of application parameters.
 
 **Version:** See `VERSION` file at repo root (currently `0.2.0`)
 
@@ -33,10 +33,10 @@ run_alfam2.py:
   1. Builds input CSV: 7 days × N variants × 168 hours per row
   2. Calls Rscript run_alfam2.R <input.csv> <output.csv>
   3. run_alfam2.R calls ALFAM2::alfam2()
-  4. Parses output CSV into {variant_labels, scenarios[{day, start, variants[{final_loss_pct, hourly}]}]}
+  4. Parses output CSV into {variant_labels, days[{day, start, variants[{final_loss_pct, hourly}]}]}
 
 Backend returns:
-  { variable, variant_labels, scenarios, weather }
+  { variable, variant_labels, days, weather }
 
 Frontend renders:
   - No day selected → OverviewChart (grouped bars: final_loss_pct per variant per day)
@@ -100,7 +100,7 @@ Frontend renders:
 {
   "variable": "app.mthd",
   "variant_labels": ["Broadcast", "Trailing hose", "Trailing shoe", "Open slot", "Closed slot"],
-  "scenarios": [
+  "days": [
     {
       "day": 0,
       "start": "2026-04-28T12:00",
@@ -137,12 +137,12 @@ Returns `{"status": "ok", "version": "0.2.0", "environment": "production"}`
 
 ## Backend Conventions
 
-- **ALFAM2 input CSV columns:** `scenario, ct, TAN.app, man.dm, man.ph, man.source, app.mthd, incorp, t.incorp, app.rate, air.temp, wind.sqrt, rain.rate`
-- **ALFAM2 output CSV columns:** `scenario, ct, e, er, j, jinst`
+- **ALFAM2 input CSV columns:** `day_variant, ct, TAN.app, man.dm, man.ph, man.source, app.mthd, incorp, t.incorp, app.rate, air.temp, wind.sqrt, rain.rate`
+- **ALFAM2 output CSV columns:** `day_variant, ct, e, er, j, jinst`
 - **Fixed model parameters:** `TAN.app = 60.0`, `app.rate = 30.0` — hardcoded in `_build_input_rows()`, not configurable from the frontend.
 - **Incorp depth "none":** Means empty `incorp` and `t.incorp` columns in the CSV (NA in R).
 - **wind.sqrt:** Precomputed in Python before sending to R.
-- **Scenario IDs:** Pattern `d{day_idx}_v{var_idx}` (e.g. `d0_v0`, `d2_v4`).
+- **Day/variant IDs (CSV column):** Pattern `d{day_idx}_v{var_idx}` (e.g. `d0_v0`, `d2_v4`). The CSV column is named `day_variant`, used by the R script as the grouping column.
 - **Weather caching:** In-memory cache with 10-min TTL, coordinate keys rounded to 2 decimal places (~1.1 km).
 - **Variant value parsing:** `_parse_app_hour()` handles `"06:00"` → 6, `_parse_float()` ensures numeric types from JSON.
 - **Error strategy:** 422 for validation errors, 502 for weather fetch failures, 500 for R script failures.

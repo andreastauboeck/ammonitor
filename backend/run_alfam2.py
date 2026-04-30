@@ -1,10 +1,10 @@
 """ALFAM2 model runner.
 
-Runs 7 scenarios (day 0..6) in a single R call. Each scenario represents
+Runs 7 days (day 0..6) in a single R call. Each day represents
 applying manure at the start of that day and tracking cumulative NH3 loss
 over the following 168 hours (7 days).
 
-Each scenario is run for all variants of the selected variable, giving
+Each day is run for all variants of the selected variable, giving
 7 * <num_variants> groups per R invocation.
 """
 from __future__ import annotations
@@ -19,8 +19,8 @@ from typing import Any, Literal
 
 SCRIPT_DIR = Path(__file__).parent
 
-N_SCENARIOS = 7
-SCENARIO_HOURS = 168
+N_DAYS = 7
+PREDICTION_HOURS = 168
 
 VariableName = Literal[
     "app.mthd", "app.time", "man.dm", "man.ph", "incorp", "incorp.depth", "man.source"
@@ -70,7 +70,7 @@ def _run_alfam2_r(
     start_dates_iso: list[str],
 ) -> dict:
     """Invoke the ALFAM2 R script with the given parameters."""
-    min_needed = (N_SCENARIOS - 1) * 24 + application_hour + SCENARIO_HOURS
+    min_needed = (N_DAYS - 1) * 24 + application_hour + PREDICTION_HOURS
     if weather_hourly is not None and len(weather_hourly) < min_needed:
         raise ValueError(
             f"Need at least {min_needed} hours of weather, got {len(weather_hourly)}"
@@ -99,7 +99,7 @@ def _run_alfam2_r(
         )
 
         fieldnames = [
-            "scenario",
+            "day_variant",
             "ct",
             "TAN.app",
             "man.dm",
@@ -166,13 +166,13 @@ def _build_input_rows(
     incorp_time: float,
     weather_hourly: list[dict],
 ) -> list[dict]:
-    """Build the ALFAM2 input CSV rows for all scenario-variant combinations."""
+    """Build the ALFAM2 input CSV rows for all day-variant combinations."""
     rows: list[dict] = []
     tan_app = 60.0  # Fixed reference; does not affect er (relative emission)
 
-    for day_idx in range(N_SCENARIOS):
+    for day_idx in range(N_DAYS):
         for var_idx, (var_value, _var_label) in enumerate(variants):
-            scenario_id = f"d{day_idx}_v{var_idx}"
+            csv_id = f"d{day_idx}_v{var_idx}"
 
             # Determine per-row values based on which variable is active
             row_dm = man_dm
@@ -212,8 +212,8 @@ def _build_input_rows(
             t_incorp_val = row_incorp_time if row_incorp != "none" else ""
             incorp_val = row_incorp if row_incorp != "none" else ""
 
-            for hour_in_scenario in range(1, SCENARIO_HOURS + 1):
-                weather_idx = start_hour + hour_in_scenario - 1
+            for hour_idx in range(1, PREDICTION_HOURS + 1):
+                weather_idx = start_hour + hour_idx - 1
                 w = weather_hourly[weather_idx]
                 air_temp = float(w.get("air_temp", 15.0))
                 wind_speed = max(float(w.get("wind_speed", 2.7)), 0.0)
@@ -221,8 +221,8 @@ def _build_input_rows(
                 wind_sqrt = math.sqrt(wind_speed)
 
                 rows.append({
-                    "scenario": scenario_id,
-                    "ct": hour_in_scenario,
+                    "day_variant": csv_id,
+                    "ct": hour_idx,
                     "TAN.app": tan_app,
                     "man.dm": row_dm,
                     "man.ph": row_ph,
@@ -254,19 +254,19 @@ def _parse_output(
     start_dates_iso: list[str],
     variants: list[tuple[any, str]],
 ) -> dict:
-    by_scenario: dict[str, list[dict]] = {}
+    by_csv_id: dict[str, list[dict]] = {}
     for r in out_rows:
-        sid = r.get("scenario", "")
-        by_scenario.setdefault(sid, []).append(r)
+        csv_id = r.get("day_variant", "")
+        by_csv_id.setdefault(csv_id, []).append(r)
 
-    scenarios: list[dict] = []
-    for day_idx in range(N_SCENARIOS):
+    days: list[dict] = []
+    for day_idx in range(N_DAYS):
         start_iso = start_dates_iso[day_idx] if day_idx < len(start_dates_iso) else ""
         variants_out: dict[str, dict] = {}
 
         for var_idx, (_var_value, var_label) in enumerate(variants):
-            sid = f"d{day_idx}_v{var_idx}"
-            rows = by_scenario.get(sid, [])
+            csv_id = f"d{day_idx}_v{var_idx}"
+            rows = by_csv_id.get(csv_id, [])
             hourly: list[dict] = []
             final_er = 0.0
             for r in rows:
@@ -287,7 +287,7 @@ def _parse_output(
                 "hourly": hourly,
             }
 
-        scenarios.append({
+        days.append({
             "day": day_idx,
             "start": start_iso,
             "variants": variants_out,
@@ -296,7 +296,7 @@ def _parse_output(
     return {
         "variable": None,  # filled by caller
         "variant_labels": [label for _, label in variants],
-        "scenarios": scenarios,
+        "days": days,
     }
 
 
@@ -319,7 +319,7 @@ if __name__ == "__main__":
         weather_hourly=fake_weather,
         start_dates_iso=fake_dates,
     )
-    for s in result["scenarios"]:
-        print(f"Day {s['day']} ({s['start']}):")
-        for label, data in s["variants"].items():
+    for day in result["days"]:
+        print(f"Day {day['day']} ({day['start']}):")
+        for label, data in day["variants"].items():
             print(f"  {label}: {data['final_loss_pct']:.2f}%")

@@ -10,7 +10,7 @@ export interface VariantData {
   hourly: HourlyPoint[]
 }
 
-export interface ScenarioData {
+export interface DayData {
   day: number
   start: string
   variants: Record<string, VariantData>
@@ -26,7 +26,7 @@ export interface WeatherPoint {
 export interface ApiResponse {
   variable: VariableName
   variant_labels: string[]
-  scenarios: ScenarioData[]
+  days: DayData[]
   weather: WeatherPoint[]
 }
 
