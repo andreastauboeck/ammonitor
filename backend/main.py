@@ -139,19 +139,22 @@ def calculate(input_data: CalculateInput) -> dict:
 
     variant_tuples = [(v.value, v.label) for v in input_data.variants]
 
-    result = run_alfam2(
-        variable=variable,
-        variants=variant_tuples,
-        app_mthd=input_data.app_mthd,
-        man_dm=input_data.man_dm,
-        man_ph=input_data.man_ph,
-        man_source=input_data.man_source,
-        application_hour=app_hour,
-        incorp=input_data.incorp,
-        incorp_time=input_data.incorp_time,
-        weather_hourly=weather["hourly"],
-        start_dates_iso=daily_starts,
-    )
+    try:
+        result = run_alfam2(
+            variable=variable,
+            variants=variant_tuples,
+            app_mthd=input_data.app_mthd,
+            man_dm=input_data.man_dm,
+            man_ph=input_data.man_ph,
+            man_source=input_data.man_source,
+            application_hour=app_hour,
+            incorp=input_data.incorp,
+            incorp_time=input_data.incorp_time,
+            weather_hourly=weather["hourly"],
+            start_dates_iso=daily_starts,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ALFAM2 model error: {e}") from e
 
     return {
         "variable": variable,

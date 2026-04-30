@@ -215,9 +215,9 @@ def _build_input_rows(
             for hour_idx in range(1, PREDICTION_HOURS + 1):
                 weather_idx = start_hour + hour_idx - 1
                 w = weather_hourly[weather_idx]
-                air_temp = float(w.get("air_temp", 15.0))
-                wind_speed = max(float(w.get("wind_speed", 2.7)), 0.0)
-                rain_rate = max(float(w.get("rain_rate", 0.0)), 0.0)
+                air_temp = float(w["air_temp"])
+                wind_speed = max(float(w["wind_speed"]), 0.0)
+                rain_rate = max(float(w["rain_rate"]), 0.0)
                 wind_sqrt = math.sqrt(wind_speed)
 
                 rows.append({

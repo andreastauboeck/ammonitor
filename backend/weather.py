@@ -116,12 +116,22 @@ def _parse_om_response(payload: dict) -> dict:
 
     out_hourly = []
     for i in range(min(len(times), FORECAST_DAYS * 24)):
+        temp = temps[i] if i < len(temps) else None
+        wind = winds[i] if i < len(winds) else None
+        rain = rains[i] if i < len(rains) else None
+
+        if temp is None or wind is None or rain is None:
+            raise RuntimeError(
+                f"Open-Meteo returned incomplete data at hour {i} "
+                f"(temp={temp}, wind={wind}, rain={rain})"
+            )
+
         out_hourly.append(
             {
                 "time_iso": times[i],
-                "air_temp": _safe_num(temps[i] if i < len(temps) else None, 15.0),
-                "wind_speed": _safe_num(winds[i] if i < len(winds) else None, 2.7),
-                "rain_rate": _safe_num(rains[i] if i < len(rains) else None, 0.0),
+                "air_temp": _safe_num(temp),
+                "wind_speed": _safe_num(wind),
+                "rain_rate": _safe_num(rain),
             }
         )
 
@@ -130,13 +140,13 @@ def _parse_om_response(payload: dict) -> dict:
     }
 
 
-def _safe_num(v, default: float) -> float:
+def _safe_num(v) -> float:
     try:
         if v is None:
-            return default
+            raise ValueError("Missing value")
         f = float(v)
         if math.isnan(f) or math.isinf(f):
-            return default
+            raise ValueError(f"Invalid number: {v}")
         return f
-    except (ValueError, TypeError):
-        return default
+    except (ValueError, TypeError) as e:
+        raise RuntimeError(f"Invalid weather value: {v}") from e
