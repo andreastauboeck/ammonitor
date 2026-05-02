@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import LanguageSwitcher from '../components/LanguageSwitcher'
-import ThemeSwitcher from '../components/ThemeSwitcher'
+import SettingsMenu from '../components/SettingsMenu'
 
 export default function Imprint() {
   const { t } = useTranslation()
@@ -10,10 +9,7 @@ export default function Imprint() {
       <div className="max-w-2xl mx-auto px-4 md:px-6 py-6">
         <div className="flex items-center justify-between mb-8 gap-2">
           <Link to="/" className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200">← {t('imprint.home_link')}</Link>
-          <div className="flex items-center gap-2">
-            <ThemeSwitcher />
-            <LanguageSwitcher />
-          </div>
+          <SettingsMenu />
         </div>
 
         <h1 className="text-3xl font-bold mb-6">{t('imprint.title')}</h1>

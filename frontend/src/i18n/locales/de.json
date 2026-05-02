@@ -14,6 +14,16 @@
     "dark": "Dunkel",
     "system": "System"
   },
+  "settings": {
+    "label": "Einstellungen",
+    "theme": "Thema",
+    "language": "Sprache"
+  },
+  "map": {
+    "gesture_touch": "Zwei Finger zum Bewegen verwenden",
+    "gesture_scroll": "Strg + Scrollen zum Zoomen",
+    "gesture_scroll_mac": "\u2318 + Scrollen zum Zoomen"
+  },
   "units": {
     "kg_per_ha": "kg/ha"
   },

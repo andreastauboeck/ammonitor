@@ -13,8 +13,8 @@ import {
 } from './types'
 import OverviewChart from './OverviewChart'
 import DetailChart from './DetailChart'
-import LanguageSwitcher from '../components/LanguageSwitcher'
-import ThemeSwitcher from '../components/ThemeSwitcher'
+import SettingsMenu from '../components/SettingsMenu'
+import SiteIcon from '../components/SiteIcon'
 
 const VARIABLE_OPTIONS_BEFORE_INCORP: VariableName[] = [
   'app_mthd', 'app_time', 'man_dm',
@@ -92,7 +92,25 @@ export default function Calculation() {
   const [formData, setFormData] = useState<FormData>(() => deserializeForm(searchParams))
   const [showRadioHint, setShowRadioHint] = useState(false)
 
+  // Logo expansion: on hover (desktop) or when scrolled to top (touch devices).
+  const [iconHover, setIconHover] = useState(false)
+  const [atTop, setAtTop] = useState(true)
+  const [isTouch, setIsTouch] = useState(false)
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setIsTouch(
+      'ontouchstart' in window ||
+      navigator.maxTouchPoints > 0 ||
+      window.matchMedia('(pointer: coarse)').matches
+    )
+    const onScroll = () => setAtTop(window.scrollY <= 4)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  const iconExpanded = iconHover || (isTouch && atTop)
 
   useEffect(() => {
     fetch('/api/status')
@@ -298,17 +316,22 @@ export default function Calculation() {
               {t('calculation.back_to_map')}
             </Link>
           )}
-          <Link to="/" className="flex-1 text-center">
-            <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-emerald-500 dark:text-emerald-400">
-                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-              </svg>
+          <Link
+            to="/"
+            className="flex-1 text-center"
+            aria-label="ammonitor"
+            onMouseEnter={() => setIconHover(true)}
+            onMouseLeave={() => setIconHover(false)}
+            onFocus={() => setIconHover(true)}
+            onBlur={() => setIconHover(false)}
+          >
+            <span className="inline-flex items-center gap-3 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
+              <SiteIcon expanded={iconExpanded} />
               <span className="hidden sm:inline font-semibold text-sm">ammonitor</span>
             </span>
           </Link>
-          <div className="ml-auto flex items-center gap-2">
-            <ThemeSwitcher />
-            <LanguageSwitcher />
+          <div className="ml-auto flex items-center">
+            <SettingsMenu />
           </div>
         </div>
       </div>

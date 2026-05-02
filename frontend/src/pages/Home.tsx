@@ -5,8 +5,12 @@ import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import type { Map } from 'leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import LanguageSwitcher from '../components/LanguageSwitcher'
-import ThemeSwitcher from '../components/ThemeSwitcher'
+import 'leaflet-gesture-handling/dist/leaflet-gesture-handling.css'
+import { GestureHandling } from 'leaflet-gesture-handling'
+import SettingsMenu from '../components/SettingsMenu'
+
+// Register the gesture handler globally so MapContainer can opt-in via prop.
+;(L.Map as any).addInitHook('addHandler', 'gestureHandling', GestureHandling)
 
 const customIcon = L.icon({
   iconUrl: '/marker-icon.png',
@@ -232,10 +236,9 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
 
-      {/* ── Top bar with switchers ── */}
-      <div className="max-w-6xl mx-auto px-4 md:px-6 pt-3 flex justify-end items-center gap-2">
-        <ThemeSwitcher />
-        <LanguageSwitcher />
+      {/* ── Top bar with settings menu ── */}
+      <div className="max-w-6xl mx-auto px-4 md:px-6 pt-3 flex justify-end items-center">
+        <SettingsMenu />
       </div>
 
       {/* ── Hero + Map ── */}
@@ -244,17 +247,17 @@ export default function Home() {
 
           {/* Left: intro + search */}
           <div className="lg:w-2/5 flex flex-col">
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center justify-center gap-3 mb-4">
               <div className="w-28 h-32 rounded-xl bg-amber-50 flex items-center justify-center">
                 <img src="/logo.png" alt="" className="w-24 h-28" />
               </div>
               <h1 className="text-3xl md:text-4xl font-bold">ammonitor</h1>
             </div>
 
-            <p className="text-lg text-slate-700 dark:text-slate-300 mb-1">
+            <p className="text-lg text-slate-700 dark:text-slate-300 mb-1 text-center">
               {t('home.tagline')}
             </p>
-            <p className="text-sm text-slate-500 mb-6">
+            <p className="text-sm text-slate-500 mb-6 text-center">
               {t('home.subtitle')}
             </p>
 
@@ -363,25 +366,56 @@ export default function Home() {
             )}
 
             {location && (
-              <div className="hidden lg:block">
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
-                  <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
-                  {' '}{t('home.selected')}
-                </p>
-                <button
-                  onClick={handleStartCalculation}
-                  className="px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition-colors font-semibold"
-                >
-                  {t('home.start_button')} →
-                </button>
-              </div>
+              <>
+                {/* Phone portrait: Calculate button sits right under recent locations */}
+                <div className="lg:hidden mb-4">
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3 text-center">
+                    <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
+                    {' '}{t('home.selected')}
+                  </p>
+                  <button
+                    onClick={handleStartCalculation}
+                    className="w-full px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition-colors font-semibold"
+                  >
+                    {t('home.start_button')} →
+                  </button>
+                </div>
+                {/* Desktop: Calculate button under search panel, beside the map */}
+                <div className="hidden lg:block">
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+                    <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
+                    {' '}{t('home.selected')}
+                  </p>
+                  <button
+                    onClick={handleStartCalculation}
+                    className="px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition-colors font-semibold"
+                  >
+                    {t('home.start_button')} →
+                  </button>
+                </div>
+              </>
             )}
           </div>
 
           {/* Right: map */}
           <div className="lg:w-3/5 w-full">
             <div className="h-72 md:h-96 rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700">
-              <MapContainer center={[48.5, 10]} zoom={4} className="h-full w-full" ref={mapRef}>
+              <MapContainer
+                center={[48.5, 10]}
+                zoom={4}
+                className="h-full w-full"
+                ref={mapRef}
+                {...({
+                  gestureHandling: true,
+                  gestureHandlingOptions: {
+                    text: {
+                      touch: t('map.gesture_touch'),
+                      scroll: t('map.gesture_scroll'),
+                      scrollMac: t('map.gesture_scroll_mac'),
+                    },
+                  },
+                } as any)}
+              >
                 <TileLayer
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -393,20 +427,6 @@ export default function Home() {
           </div>
         </div>
 
-        {location && (
-          <div className="lg:hidden mt-4">
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
-              <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
-              {' '}{t('home.selected')}
-            </p>
-            <button
-              onClick={handleStartCalculation}
-              className="w-full px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition-colors font-semibold"
-            >
-              {t('home.start_button')} →
-            </button>
-          </div>
-        )}
       </div>
 
       {/* ── About ── */}
