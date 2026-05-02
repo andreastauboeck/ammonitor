@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   BarChart,
   Bar,
@@ -14,9 +15,14 @@ import {
 import {
   type ApiResponse,
   type FormData,
+  type VariableName,
   VARIANT_COLORS,
   niceMax,
 } from './types'
+
+function variantLabel(t: any, variable: VariableName, value: string | number): string {
+  return t(`variants.${variable}.${value}`, { defaultValue: String(value) })
+}
 
 interface EmissionTooltipProps {
   active?: boolean
@@ -24,9 +30,10 @@ interface EmissionTooltipProps {
   label?: string | number
   tanApp: number
   forceHide?: boolean
+  unit: string
 }
 
-function EmissionTooltip({ active, payload, label, tanApp, forceHide }: EmissionTooltipProps) {
+function EmissionTooltip({ active, payload, label, tanApp, forceHide, unit }: EmissionTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
   return (
@@ -47,7 +54,7 @@ function EmissionTooltip({ active, payload, label, tanApp, forceHide }: Emission
         const kg = (pct * tanApp) / 100
         return (
           <div key={entry.dataKey} style={{ color: entry.color }}>
-            {entry.dataKey}: {pct.toFixed(1)}% ({kg.toFixed(1)} kg/ha)
+            {entry.name}: {pct.toFixed(1)}% ({kg.toFixed(1)} {unit})
           </div>
         )
       })}
@@ -109,7 +116,9 @@ interface OverviewChartProps {
 }
 
 export default function OverviewChart({ data, formData, onDayClick }: OverviewChartProps) {
-  const variantLabels = data.variant_labels
+  const { t, i18n } = useTranslation()
+  const variableName = data.variable
+  const values = data.values
   const isTouch = useIsTouch()
   const emissionScrollRef = useRef<HTMLDivElement>(null)
   const weatherScrollRef = useRef<HTMLDivElement>(null)
@@ -117,17 +126,46 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
   const [touchTooltipActive, setTouchTooltipActive] = useState(false)
   const autoDismissRef = useRef<ReturnType<typeof setTimeout>>()
 
-  const handleWeatherClick = (e: any) => {
-    if (!isTouch) return
-    if (e && typeof e.activeTooltipIndex === 'number') {
-      const row = weatherOverviewData[e.activeTooltipIndex]
-      if (row) onDayClick(row.day)
+  const overviewData = useMemo(() => {
+    return data.days.map((d) => {
+      const row: Record<string, any> = {
+        day: d.day,
+        dayLabel: new Date(d.start).toLocaleDateString(i18n.language, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+        }),
+        start: d.start,
+      }
+      for (const v of d.variants) {
+        row[String(v.value)] = v.final_loss_pct
+      }
+      return row
+    })
+  }, [data, i18n.language])
+
+  const overviewMax = useMemo(() => {
+    let m = 0
+    for (const row of overviewData) {
+      for (const v of values) {
+        const cell = row[String(v)] ?? 0
+        if (cell > m) m = cell
+      }
     }
-  }
+    return niceMax(m)
+  }, [overviewData, values])
 
   const handleEmissionClick = (e: any) => {
     if (isTouch && e && typeof e.activeTooltipIndex === 'number') {
       const row = overviewData[e.activeTooltipIndex]
+      if (row) onDayClick(row.day)
+    }
+  }
+
+  const handleWeatherClick = (e: any) => {
+    if (!isTouch) return
+    if (e && typeof e.activeTooltipIndex === 'number') {
+      const row = weatherOverviewData[e.activeTooltipIndex]
       if (row) onDayClick(row.day)
     }
   }
@@ -145,35 +183,6 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
     tgt.scrollLeft = src.scrollLeft
     requestAnimationFrame(() => { isSyncingRef.current = false })
   }
-
-  const overviewData = useMemo(() => {
-    return data.days.map((d) => {
-      const row: Record<string, any> = {
-        day: d.day,
-        dayLabel: new Date(d.start).toLocaleDateString(undefined, {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-        }),
-        start: d.start,
-      }
-      for (const label of variantLabels) {
-        row[label] = d.variants[label]?.final_loss_pct ?? 0
-      }
-      return row
-    })
-  }, [data, variantLabels])
-
-  const overviewMax = useMemo(() => {
-    let m = 0
-    for (const row of overviewData) {
-      for (const label of variantLabels) {
-        const v = row[label] ?? 0
-        if (v > m) m = v
-      }
-    }
-    return niceMax(m)
-  }, [overviewData, variantLabels])
 
   const weatherOverviewData = useMemo(() => {
     if (!data.weather || data.weather.length === 0 || data.days.length === 0) return []
@@ -207,7 +216,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
       const maxWind = winds.length ? Math.max(...winds) : 0
       return {
         day: d.day,
-        dayLabel: new Date(d.start).toLocaleDateString(undefined, {
+        dayLabel: new Date(d.start).toLocaleDateString(i18n.language, {
           weekday: 'short',
           month: 'short',
           day: 'numeric',
@@ -218,10 +227,10 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
         wind_kmh: +avgWind.toFixed(1),
         wind_kmh_min: +minWind.toFixed(1),
         wind_kmh_delta: +(maxWind - minWind).toFixed(1),
-        rain_rate: +avg(bucket?.rains ?? []).toFixed(2),
+        rain_rate: +(bucket?.rains ?? []).reduce((a: number, b: number) => a + b, 0).toFixed(1),
       }
     })
-  }, [data])
+  }, [data, i18n.language])
 
   const weatherLeftMax = useMemo(() => {
     let m = 0
@@ -246,13 +255,13 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
     <>
       {/* Fixed legend */}
       <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-300 mb-1 shrink-0">
-        {variantLabels.map((label, i) => (
-          <span key={label} className="inline-flex items-center gap-1">
+        {values.map((value, i) => (
+          <span key={String(value)} className="inline-flex items-center gap-1">
             <span
               className="inline-block w-3 h-3"
               style={{ backgroundColor: VARIANT_COLORS[i % VARIANT_COLORS.length] }}
             />
-            {label}
+            {variantLabel(t, variableName, value)}
           </span>
         ))}
       </div>
@@ -262,7 +271,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
         <div className="flex shrink-0 h-full">
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-              NH3 loss (% of TAN)
+              {t('charts.nh3_loss_pct')}
             </span>
           </div>
           <div style={{ width: 30 }} className="h-full">
@@ -308,13 +317,14 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                 <YAxis yAxisId="right" orientation="right" domain={[0, overviewMax]} hide />
                 <Tooltip
                   trigger={isTouch ? 'click' : 'hover'}
-                  content={<EmissionTooltip tanApp={formData.tanApp} forceHide={isTouch} />}
+                  content={<EmissionTooltip tanApp={formData.tanApp} forceHide={isTouch} unit={t('units.kg_per_ha')} />}
                   cursor={isTouch ? false : { fill: 'rgba(148, 163, 184, 0.1)' }}
                 />
-                {variantLabels.map((label, i) => (
+                {values.map((value, i) => (
                   <Bar
-                    key={label}
-                    dataKey={label}
+                    key={String(value)}
+                    dataKey={String(value)}
+                    name={variantLabel(t, variableName, value)}
                     yAxisId="left"
                     fill={VARIANT_COLORS[i % VARIANT_COLORS.length]}
                     cursor="pointer"
@@ -351,7 +361,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
           </div>
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-              NH3 loss (kg/ha)
+              {t('charts.nh3_loss_kgha')}
             </span>
           </div>
         </div>
@@ -361,25 +371,24 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
       <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-300 mt-2 mb-1 shrink-0">
         <span className="inline-flex items-center gap-1">
           <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#f97316' }} />
-          Avg temp (°C)
+          {t('charts.avg_temp')}
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#22d3ee' }} />
-          Avg wind (km/h)
+          {t('charts.avg_wind')}
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#3b82f6' }} />
-          Avg rain (mm/h)
+          {t('charts.avg_rain')}
         </span>
       </div>
 
       {/* Weather chart */}
       <div className="flex-[2] min-h-0 flex">
-        {/* Left fixed column */}
         <div className="flex shrink-0 h-full">
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-              Temp / Wind
+              {t('charts.temp_wind_short')}
             </span>
           </div>
           <div style={{ width: 30 }} className="h-full">
@@ -401,7 +410,6 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
           </div>
         </div>
 
-        {/* Middle scrollable */}
         <div ref={weatherScrollRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[600px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -431,6 +439,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                   fill="transparent"
                   fillOpacity={0}
                   dot={false}
+                  activeDot={false}
                   isAnimationActive={false}
                 />
                 <Area
@@ -444,13 +453,14 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                   fill="#f97316"
                   fillOpacity={0.07}
                   dot={false}
+                  activeDot={false}
                   isAnimationActive={false}
                 />
                 <Line
                   yAxisId="left"
                   type="monotone"
                   dataKey="air_temp"
-                  name="Avg temp (°C)"
+                  name={t('charts.avg_temp')}
                   stroke="#f97316"
                   dot={false}
                   strokeWidth={2}
@@ -466,6 +476,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                   fill="transparent"
                   fillOpacity={0}
                   dot={false}
+                  activeDot={false}
                   isAnimationActive={false}
                 />
                 <Area
@@ -479,13 +490,14 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                   fill="#22d3ee"
                   fillOpacity={0.07}
                   dot={false}
+                  activeDot={false}
                   isAnimationActive={false}
                 />
                 <Line
                   yAxisId="left"
                   type="monotone"
                   dataKey="wind_kmh"
-                  name="Avg wind (km/h)"
+                  name={t('charts.avg_wind')}
                   stroke="#22d3ee"
                   dot={false}
                   strokeWidth={2}
@@ -494,7 +506,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                   yAxisId="right"
                   type="monotone"
                   dataKey="rain_rate"
-                  name="Rain (mm/h)"
+                  name={t('charts.avg_rain')}
                   stroke="#3b82f6"
                   dot={false}
                   strokeWidth={2}
@@ -504,7 +516,6 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
           </div>
         </div>
 
-        {/* Right fixed column */}
         <div className="flex shrink-0 h-full">
           <div style={{ width: 30 }} className="h-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -526,7 +537,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
           </div>
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-              Rain (mm/h)
+              {t('charts.rain_short')}
             </span>
           </div>
         </div>
@@ -534,11 +545,11 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
 
       {overviewData.length > 0 && (
         <p className="text-xs text-slate-500 mt-2">
-          {isTouch ? 'Tap' : 'Click'} a day group to see hourly details.
+          {isTouch ? t('calculation.tip_tap') : t('calculation.tip_click')}
         </p>
       )}
       <p className="text-[10px] text-slate-500 mt-1">
-        Weather data by{' '}
+        {t('calculation.weather_by')}{' '}
         <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">
           Open-Meteo.com
         </a>

@@ -1,43 +1,50 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import {
   type ApiResponse,
   type FormData,
   type VariableName,
+  type VariantDef,
   VARIANT_DEFS,
   TAN_PRESETS,
-  INPUT_LABELS,
   DEFAULT_FORM_DATA,
   formatDayLabel,
 } from './types'
 import OverviewChart from './OverviewChart'
 import DetailChart from './DetailChart'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 const VARIABLE_OPTIONS_BEFORE_INCORP: VariableName[] = [
-  'app.mthd', 'app.time', 'man.dm',
+  'app_mthd', 'app_time', 'man_dm',
 ]
 const VARIABLE_OPTIONS_AFTER_INCORP: VariableName[] = [
-  'man.source', 'man.ph',
+  'man_source', 'man_ph',
+]
+
+const ALL_VARIABLES: VariableName[] = [
+  'app_mthd', 'app_time', 'man_dm', 'man_ph',
+  'incorp_depth', 'incorp_time', 'man_source',
 ]
 
 function serializeForm(formData: FormData): Record<string, string> {
-  const p: Record<string, string> = {
+  return {
     variable: formData.variable,
     tanApp: String(formData.tanApp),
     appMthd: formData.appMthd,
     manDm: String(formData.manDm),
     manPh: String(formData.manPh),
     manSource: formData.manSource,
-    applicationTime: formData.applicationTime,
+    appTime: String(formData.appTime),
     incorpTime: String(formData.incorpTime),
-    incorp: formData.incorp,
+    incorpDepth: formData.incorpDepth,
   }
-  return p
 }
 
 function deserializeForm(params: URLSearchParams): FormData {
   const d = { ...DEFAULT_FORM_DATA }
-  if (params.has('variable')) d.variable = params.get('variable') as VariableName
+  if (params.has('variable') && ALL_VARIABLES.includes(params.get('variable') as VariableName))
+    d.variable = params.get('variable') as VariableName
   if (params.has('tanApp')) d.tanApp = parseFloat(params.get('tanApp')!) || 60
   if (params.has('appMthd') && ['bc', 'th', 'ts', 'os', 'cs'].includes(params.get('appMthd')!))
     d.appMthd = params.get('appMthd')!
@@ -45,15 +52,29 @@ function deserializeForm(params: URLSearchParams): FormData {
   if (params.has('manPh')) d.manPh = parseFloat(params.get('manPh')!) || 7.5
   if (params.has('manSource') && ['cattle', 'pig'].includes(params.get('manSource')!))
     d.manSource = params.get('manSource') as 'cattle' | 'pig'
-  if (params.has('applicationTime') && ['06:00', '08:00', '12:00', '16:00', '20:00'].includes(params.get('applicationTime')!))
-    d.applicationTime = params.get('applicationTime') as FormData['applicationTime']
-  if (params.has('incorpTime')) d.incorpTime = parseFloat(params.get('incorpTime')!) || 1
-  if (params.has('incorp') && ['none', 'shallow', 'deep'].includes(params.get('incorp')!))
-    d.incorp = params.get('incorp') as FormData['incorp']
+  if (params.has('appTime')) {
+    const h = parseInt(params.get('appTime')!, 10)
+    if (!isNaN(h) && h >= 0 && h <= 23) d.appTime = h
+  }
+  if (params.has('incorpTime')) d.incorpTime = parseFloat(params.get('incorpTime')!) || 0
+  if (params.has('incorpDepth') && ['none', 'shallow', 'deep'].includes(params.get('incorpDepth')!))
+    d.incorpDepth = params.get('incorpDepth') as FormData['incorpDepth']
   return d
 }
 
+/** Format a variant value for display, using i18n translations. */
+function variantLabel(t: any, variable: VariableName, value: string | number, def?: VariantDef): string {
+  const key = def?.labelKey ?? String(value)
+  const main = t(`variants.${variable}.${key}`, { defaultValue: String(value) })
+  if (def?.hasCategory) {
+    const cat = t(`categories.${variable}.${key}`, { defaultValue: '' })
+    if (cat) return `${main} — ${cat}`
+  }
+  return main
+}
+
 export default function Calculation() {
+  const { t, i18n } = useTranslation()
   const { lat, lng, day } = useParams<{ lat: string; lng: string; day: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -69,7 +90,7 @@ export default function Calculation() {
   const [formData, setFormData] = useState<FormData>(() => deserializeForm(searchParams))
   const [showRadioHint, setShowRadioHint] = useState(false)
 
-  const canVaryIncorp = formData.incorp !== 'none'
+
 
   useEffect(() => {
     const p = new URLSearchParams(serializeForm(formData))
@@ -79,8 +100,8 @@ export default function Calculation() {
   useEffect(() => {
     if (!lat || !lng) return
     fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
-      { headers: { 'User-Agent': 'ammonitor/0.2' } }
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=${i18n.language}`,
+      { headers: { 'User-Agent': 'ammonitor/0.3' } }
     )
       .then((res) => res.json())
       .then((d) => {
@@ -94,7 +115,7 @@ export default function Calculation() {
       })
       .catch(() => setLocationName(null))
       .finally(() => setLocationLoading(false))
-  }, [lat, lng])
+  }, [lat, lng, i18n.language])
 
   useEffect(() => {
     if (!lat || !lng) return
@@ -105,6 +126,8 @@ export default function Calculation() {
     const browserTz =
       Intl.DateTimeFormat().resolvedOptions().timeZone || 'auto'
 
+    const values = VARIANT_DEFS[formData.variable].map((d) => d.value)
+
     fetch('/api/calculate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -112,13 +135,13 @@ export default function Calculation() {
         lat: parseFloat(lat),
         lng: parseFloat(lng),
         variable: formData.variable,
-        variants: VARIANT_DEFS[formData.variable],
+        values,
         app_mthd: formData.appMthd,
         man_dm: formData.manDm,
         man_ph: formData.manPh,
         man_source: formData.manSource,
-        application_time: formData.applicationTime,
-        incorp: formData.incorp,
+        app_time: formData.appTime,
+        incorp_depth: formData.incorpDepth,
         incorp_time: formData.incorpTime,
         timezone: browserTz,
       }),
@@ -147,8 +170,8 @@ export default function Calculation() {
     formData.manDm,
     formData.manPh,
     formData.manSource,
-    formData.applicationTime,
-    formData.incorp,
+    formData.appTime,
+    formData.incorpDepth,
     formData.incorpTime,
   ])
 
@@ -156,21 +179,18 @@ export default function Calculation() {
     (name: string, value: any) => {
       setFormData((prev) => {
         const next = { ...prev, [name]: value }
-        if (name === 'incorp') {
+        if (name === 'incorpDepth') {
           if (value === 'none') {
             next.incorpTime = 0
-            if (prev.variable === 'incorp' || prev.variable === 'incorp.depth') {
-              next.variable = 'app.mthd'
+            if (prev.variable === 'incorp_time' || prev.variable === 'incorp_depth') {
+              next.variable = 'app_mthd'
             }
-          } else if (prev.incorp === 'none') {
+          } else if (prev.incorpDepth === 'none') {
             next.incorpTime = 4
           }
         }
-        if (name === 'incorpTime' && value === 0) {
-          next.incorp = 'none'
-          if (prev.variable === 'incorp' || prev.variable === 'incorp.depth') {
-            next.variable = 'app.mthd'
-          }
+        if (name === 'incorpTime' && value > 0 && prev.incorpDepth === 'none') {
+          next.incorpDepth = 'shallow'
         }
         return next
       })
@@ -181,8 +201,8 @@ export default function Calculation() {
   const handleVariableChange = useCallback(
     (variable: VariableName) => {
       setFormData((prev) => {
-        if (variable === 'incorp' && prev.incorp === 'none') {
-          return { ...prev, variable, incorp: 'shallow' }
+        if (variable === 'incorp_time' && prev.incorpDepth === 'none') {
+          return { ...prev, variable, incorpDepth: 'shallow', incorpTime: 4 }
         }
         return { ...prev, variable }
       })
@@ -210,44 +230,17 @@ export default function Calculation() {
     const defs = VARIANT_DEFS[variable]
     const isVariable = formData.variable === variable
     const isDisabled = isVariable
-
-    if (variable === 'incorp' && !canVaryIncorp) {
-      return (
-        <select
-          value={0}
-          onChange={(e) => {
-            const v = parseFloat(e.target.value)
-            setFormData((prev) => {
-              if (v === 0) {
-                const next: any = { ...prev, incorpTime: 0, incorp: 'none' }
-                if (prev.variable === 'incorp') next.variable = 'app.mthd'
-                return next
-              }
-              return { ...prev, incorpTime: v, incorp: 'shallow' }
-            })
-          }}
-          disabled={isDisabled}
-          className={`w-full px-2 py-1.5 text-sm rounded-lg border focus:outline-none focus:border-indigo-500 ${
-            isDisabled
-              ? 'bg-slate-900/50 border-slate-700 text-slate-500 cursor-not-allowed'
-              : 'bg-slate-700 border-slate-600'
-          }`}
-        >
-          {defs.map((d) => (
-            <option key={String(d.value)} value={String(d.value)}>
-              {d.label}{d.category ? ` — ${d.category}` : ''}
-            </option>
-          ))}
-        </select>
-      )
-    }
+    const isNumeric = (
+      variable === 'man_dm' || variable === 'man_ph' ||
+      variable === 'incorp_time' || variable === 'app_time'
+    )
 
     return (
       <select
         value={String(currentValue ?? '')}
         onChange={(e) => {
           const v = e.target.value
-          if (variable === 'man.dm' || variable === 'man.ph' || variable === 'incorp') {
+          if (isNumeric) {
             onChange(parseFloat(v))
           } else {
             onChange(v)
@@ -262,7 +255,7 @@ export default function Calculation() {
       >
         {defs.map((d) => (
           <option key={String(d.value)} value={String(d.value)}>
-            {d.label}{d.category ? ` — ${d.category}` : ''}
+            {variantLabel(t, variable, d.value, d)}
           </option>
         ))}
       </select>
@@ -272,7 +265,7 @@ export default function Calculation() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
       <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 md:px-6 py-3">
-        <div className="max-w-full md:max-w-6xl mx-auto">
+        <div className="max-w-full md:max-w-6xl mx-auto flex items-center gap-2">
           {selectedDay !== null ? (
             <button
               onClick={() => navigate(`/calculate/${lat}/${lng}`)}
@@ -281,7 +274,7 @@ export default function Calculation() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back to overview
+              {t('calculation.back_to_overview')}
             </button>
           ) : (
             <Link
@@ -291,16 +284,19 @@ export default function Calculation() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back to map
+              {t('calculation.back_to_map')}
             </Link>
           )}
+          <div className="ml-auto">
+            <LanguageSwitcher />
+          </div>
         </div>
       </div>
       <div className="max-w-full md:max-w-6xl mx-auto p-4 md:p-6">
 
         <div className="mb-4 md:mb-6">
           {locationLoading ? (
-            <p className="text-slate-400">Loading location...</p>
+            <p className="text-slate-400">{t('calculation.loading_location')}</p>
           ) : locationName ? (
             <p className="text-2xl font-bold flex items-center gap-2">
               <svg className="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -313,7 +309,7 @@ export default function Calculation() {
             <p className="text-2xl font-bold">{lat}, {lng}</p>
           )}
           <p className="text-[10px] text-slate-500 mt-0.5">
-            Geocoding by{' '}
+            {t('calculation.geocoding_by')}{' '}
             <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">Nominatim</a>
           </p>
         </div>
@@ -322,7 +318,7 @@ export default function Calculation() {
           {/* Form panel */}
           <div className={`w-full md:w-1/3 lg:w-1/4 bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-700 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
             <div className="flex items-center gap-2 mb-3">
-              <h2 className="text-lg font-semibold">Parameters</h2>
+              <h2 className="text-lg font-semibold">{t('calculation.parameters')}</h2>
               <div className="ml-auto relative">
                 <button
                   type="button"
@@ -333,14 +329,14 @@ export default function Calculation() {
                   <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border-2 border-current">
                     <span className="w-1.5 h-1.5 rounded-full bg-current" />
                   </span>
-                  = compare
+                  = {t('calculation.compare')}
                 </button>
                 {showRadioHint && (
                   <div
-                    className="absolute right-0 top-full mt-1 z-20 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-xs text-slate-300 whitespace-nowrap shadow-lg"
+                    className="absolute right-0 top-full mt-1 z-20 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-xs text-slate-300 whitespace-normal max-w-[16rem] shadow-lg"
                     onClick={() => setShowRadioHint(false)}
                   >
-                    Select a radio button to compare variants for that parameter
+                    {t('calculation.compare_hint')}
                   </div>
                 )}
               </div>
@@ -351,7 +347,7 @@ export default function Calculation() {
               <div className="flex items-center gap-2">
                 <div className="w-4" />
                 <div className="flex-1 min-w-0">
-                  <label className="block text-xs text-slate-400 mb-1">TAN applied</label>
+                  <label className="block text-xs text-slate-400 mb-1">{t('calculation.tan_applied')}</label>
                   <div className="flex items-center gap-1.5">
                     <select
                       value={formData.tanApp}
@@ -364,7 +360,7 @@ export default function Calculation() {
                         <option key={v} value={v}>{v}</option>
                       ))}
                     </select>
-                    <span className="text-xs text-slate-500">kg/ha</span>
+                    <span className="text-xs text-slate-500">{t('units.kg_per_ha')}</span>
                   </div>
                 </div>
               </div>
@@ -378,23 +374,23 @@ export default function Calculation() {
                     let onChange: (value: any) => void = () => {}
 
                     switch (variable) {
-                      case 'app.mthd':
+                      case 'app_mthd':
                         currentValue = formData.appMthd
                         onChange = (v) => handleFixedChange('appMthd', v)
                         break
-                      case 'app.time':
-                        currentValue = formData.applicationTime
-                        onChange = (v) => handleFixedChange('applicationTime', v)
+                      case 'app_time':
+                        currentValue = formData.appTime
+                        onChange = (v) => handleFixedChange('appTime', v)
                         break
-                      case 'man.dm':
+                      case 'man_dm':
                         currentValue = formData.manDm
                         onChange = (v) => handleFixedChange('manDm', v)
                         break
-                      case 'man.ph':
+                      case 'man_ph':
                         currentValue = formData.manPh
                         onChange = (v) => handleFixedChange('manPh', v)
                         break
-                      case 'man.source':
+                      case 'man_source':
                         currentValue = formData.manSource
                         onChange = (v) => handleFixedChange('manSource', v)
                         break
@@ -411,9 +407,9 @@ export default function Calculation() {
                         />
                         <div className="flex-1 min-w-0">
                           <label className="block text-xs text-slate-400 mb-1">
-                            {INPUT_LABELS[variable]}
+                            {t(`variables.${variable}`)}
                             {isVariable && (
-                              <span className="ml-1 text-emerald-400">varied</span>
+                              <span className="ml-1 text-emerald-400">{t('calculation.varied')}</span>
                             )}
                           </label>
                           {renderInput(variable, currentValue, onChange)}
@@ -423,16 +419,16 @@ export default function Calculation() {
                   })}
                   {gi === 0 && (
                     <div className="col-span-2 md:col-span-1 rounded-lg border border-slate-600 p-2">
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-1">Incorporation</div>
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-1">{t('calculation.incorporation')}</div>
                       <div className="grid grid-cols-2 md:grid-cols-2 gap-2">
-                        {(['incorp.depth', 'incorp'] as const).map((variable) => {
+                        {(['incorp_depth', 'incorp_time'] as const).map((variable) => {
                           const isVariable = formData.variable === variable
                           let currentValue: any
                           let onChange: (value: any) => void
 
-                          if (variable === 'incorp.depth') {
-                            currentValue = formData.incorp
-                            onChange = (v) => handleFixedChange('incorp', v)
+                          if (variable === 'incorp_depth') {
+                            currentValue = formData.incorpDepth
+                            onChange = (v) => handleFixedChange('incorpDepth', v)
                           } else {
                             currentValue = formData.incorpTime
                             onChange = (v) => handleFixedChange('incorpTime', v)
@@ -449,9 +445,9 @@ export default function Calculation() {
                               />
                               <div className="flex-1 min-w-0">
                                 <label className="block text-xs text-slate-400 mb-1">
-                                  {variable === 'incorp.depth' ? 'Depth' : 'Time'}
+                                  {variable === 'incorp_depth' ? t('calculation.depth') : t('calculation.time')}
                                   {isVariable && (
-                                    <span className="ml-1 text-emerald-400">varied</span>
+                                    <span className="ml-1 text-emerald-400">{t('calculation.varied')}</span>
                                   )}
                                 </label>
                                 {renderInput(variable, currentValue, onChange)}
@@ -484,8 +480,11 @@ export default function Calculation() {
               )}
               <h2 className="text-lg font-semibold flex-1 text-center">
                 {selectedDay === null
-                  ? `Overview NH3 loss by ${INPUT_LABELS[formData.variable]}`
-                  : `Detail losses on ${selectedDayData ? formatDayLabel(selectedDayData.start) : ''} by ${INPUT_LABELS[formData.variable]}`}
+                  ? t('calculation.overview_title', { variable: t(`variables.${formData.variable}`) })
+                  : t('calculation.detail_title', {
+                      date: selectedDayData ? formatDayLabel(selectedDayData.start, i18n.language) : '',
+                      variable: t(`variables.${formData.variable}`),
+                    })}
               </h2>
               {selectedDay !== null && (
                 <button
@@ -503,7 +502,7 @@ export default function Calculation() {
 
             {error && (
               <div className="mb-2 p-2 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm">
-                Error: {error}
+                {t('common.error')}: {error}
               </div>
             )}
 
@@ -515,7 +514,7 @@ export default function Calculation() {
                       <div className="absolute inset-0 rounded-full border-2 border-slate-600" />
                       <div className="absolute inset-0 rounded-full border-2 border-t-emerald-400 animate-spin" />
                     </div>
-                    <span className="text-sm text-slate-400">Calculating...</span>
+                    <span className="text-sm text-slate-400">{t('calculation.calculating')}</span>
                   </div>
                 </div>
               )}

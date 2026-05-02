@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   LineChart,
   Line,
@@ -14,10 +15,14 @@ import {
   type ApiResponse,
   type FormData,
   type WeatherPoint,
+  type VariableName,
   VARIANT_COLORS,
-  formatTimeAxis,
   niceMax,
 } from './types'
+
+function variantLabel(t: any, variable: VariableName, value: string | number): string {
+  return t(`variants.${variable}.${value}`, { defaultValue: String(value) })
+}
 
 interface EmissionTooltipProps {
   active?: boolean
@@ -25,8 +30,9 @@ interface EmissionTooltipProps {
   label?: string | number
   tanApp: number
   labelFormatter?: (l: any) => string
-  variantLabels: string[]
+  valueKeys: string[]
   forceHide?: boolean
+  unit: string
 }
 
 function EmissionTooltip({
@@ -35,17 +41,18 @@ function EmissionTooltip({
   label,
   tanApp,
   labelFormatter,
-  variantLabels,
+  valueKeys,
   forceHide,
+  unit,
 }: EmissionTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
 
   const variantEntries = payload.filter((p: any) =>
-    variantLabels.includes(p.dataKey as any),
+    valueKeys.includes(p.dataKey as any),
   )
   const otherEntries = payload.filter(
-    (p: any) => !variantLabels.includes(p.dataKey as any),
+    (p: any) => !valueKeys.includes(p.dataKey as any),
   )
 
   const labelText = labelFormatter ? labelFormatter(label) : label
@@ -68,7 +75,7 @@ function EmissionTooltip({
         const kg = (pct * tanApp) / 100
         return (
           <div key={entry.dataKey} style={{ color: entry.color }}>
-            {entry.dataKey}: {pct.toFixed(1)}% ({kg.toFixed(1)} kg/ha)
+            {entry.name}: {pct.toFixed(1)}% ({kg.toFixed(1)} {unit})
           </div>
         )
       })}
@@ -132,6 +139,7 @@ interface IncorpMarker {
   hour: number
   label: string
   color: string
+  hideLabel?: boolean
 }
 
 interface DetailChartProps {
@@ -140,22 +148,13 @@ interface DetailChartProps {
   formData: FormData
 }
 
-function parseIncorpHour(label: string): number | null {
-  const m = label.match(/(\d+(?:\.\d+)?)\s*h/i)
-  return m ? parseFloat(m[1]) : null
-}
-
-function parseAppHour(label: string): number | null {
-  const m = label.match(/^(\d{1,2}):(\d{2})$/)
-  return m ? parseInt(m[1], 10) : null
-}
-
 function makeTimeIso(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export default function DetailChart({ data, day, formData }: DetailChartProps) {
+  const { t } = useTranslation()
   const emissionScrollRef = useRef<HTMLDivElement>(null)
   const weatherScrollRef = useRef<HTMLDivElement>(null)
   const isSyncingRef = useRef(false)
@@ -197,23 +196,25 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   }
 
   const dayData = data.days.find((d) => d.day === day)
-  const variantLabels = data.variant_labels
-  const isAppTimeVariable = formData.variable === 'app.time'
+  const variableName = data.variable
+  const values = data.values
+  const valueKeys = values.map((v) => String(v))
+  const isAppTimeVariable = variableName === 'app_time'
 
   const variantOffsets = useMemo(() => {
     if (!isAppTimeVariable) return null
-    const offsets: { label: string; appHour: number; offsetFromEarliest: number }[] = []
+    const offsets: { value: string | number; appHour: number; offsetFromEarliest: number }[] = []
     let earliest = 24
-    for (const label of variantLabels) {
-      const h = parseAppHour(label)
-      if (h !== null && h < earliest) earliest = h
+    for (const v of values) {
+      const h = typeof v === 'number' ? v : parseInt(String(v), 10)
+      if (!isNaN(h) && h < earliest) earliest = h
     }
-    for (const label of variantLabels) {
-      const h = parseAppHour(label)
-      offsets.push({ label, appHour: h ?? 0, offsetFromEarliest: (h ?? 0) - earliest })
+    for (const v of values) {
+      const h = typeof v === 'number' ? v : parseInt(String(v), 10)
+      offsets.push({ value: v, appHour: h, offsetFromEarliest: h - earliest })
     }
     return offsets
-  }, [isAppTimeVariable, variantLabels])
+  }, [isAppTimeVariable, values])
 
   const earliestAppHour = variantOffsets ? Math.min(...variantOffsets.map((v) => v.appHour)) : 0
 
@@ -235,13 +236,12 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     const ZERO_HOUR = 0.1
     const byKey: Record<string, Record<string, any>> = {}
 
-    for (const label of variantLabels) {
-      const t = dayData.variants[label]
-      if (!t) continue
+    for (const variant of dayData.variants) {
+      const key = String(variant.value)
 
       let offset = 0
       if (isAppTimeVariable && variantOffsets) {
-        const vo = variantOffsets.find((v) => v.label === label)
+        const vo = variantOffsets.find((v) => String(v.value) === key)
         offset = vo ? vo.offsetFromEarliest : 0
       }
 
@@ -255,36 +255,36 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           const w = weatherByTime.get(timeIso)
           byKey[zeroKey] = {
             hour: startHour + ZERO_HOUR,
-            label: isAppTimeVariable ? formatHybridLabel(baseDate, startHour) : formatTimeAxis(0),
+            label: isAppTimeVariable ? formatHybridLabel(t, baseDate, startHour) : formatTimeAxis(t, 0),
             air_temp: w ? +w.air_temp.toFixed(1) : null,
             wind_kmh: w ? +(w.wind_speed * 3.6).toFixed(1) : null,
             rain_rate: w ? +w.rain_rate.toFixed(2) : 0,
           }
         }
-        byKey[zeroKey][label] = 0
+        byKey[zeroKey][key] = 0
       }
 
-      for (const p of t.hourly) {
+      for (const p of variant.hourly) {
         const realHour = p.hour + offset
-        const key = String(realHour)
+        const k = String(realHour)
 
-        if (!byKey[key]) {
-          const tsDate = new Date(baseDate.getTime() + realHour * 3600 * 1000)
+        if (!byKey[k]) {
+          const tsDate = new Date(baseDate.getTime() + (realHour - 1) * 3600 * 1000)
           const timeIso = makeTimeIso(tsDate)
           const w = weatherByTime.get(timeIso)
-          byKey[key] = {
+          byKey[k] = {
             hour: realHour,
-            label: isAppTimeVariable ? formatHybridLabel(baseDate, realHour) : formatTimeAxis(realHour),
+            label: isAppTimeVariable ? formatHybridLabel(t, baseDate, realHour) : formatTimeAxis(t, realHour),
             air_temp: w ? +w.air_temp.toFixed(1) : null,
             wind_kmh: w ? +(w.wind_speed * 3.6).toFixed(1) : null,
             rain_rate: w ? +w.rain_rate.toFixed(2) : 0,
           }
         }
-        byKey[key][label] = +(p.er * 100).toFixed(2)
+        byKey[k][key] = +(p.er * 100).toFixed(2)
       }
     }
     return Object.values(byKey).sort((a, b) => a.hour - b.hour)
-  }, [dayData, variantLabels, weatherByTime, isAppTimeVariable, variantOffsets, earliestAppHour])
+  }, [dayData, weatherByTime, isAppTimeVariable, variantOffsets, earliestAppHour, t])
 
   const maxHour = useMemo(() => {
     if (!detailData.length) return 168
@@ -294,21 +294,21 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   const detailMax = useMemo(() => {
     let m = 0
     for (const row of detailData as any[]) {
-      for (const label of variantLabels) {
-        const v = (row[label] ?? 0) as number
+      for (const k of valueKeys) {
+        const v = (row[k] ?? 0) as number
         if (v > m) m = v
       }
     }
     return niceMax(m)
-  }, [detailData, variantLabels])
+  }, [detailData, valueKeys])
 
   const weatherLeftMax = useMemo(() => {
     let m = 0
     for (const row of detailData as any[]) {
-      const t = (row.air_temp ?? 0) as number
-      const w = (row.wind_kmh ?? 0) as number
-      if (t > m) m = t
-      if (w > m) m = w
+      const t1 = (row.air_temp ?? 0) as number
+      const w1 = (row.wind_kmh ?? 0) as number
+      if (t1 > m) m = t1
+      if (w1 > m) m = w1
     }
     return niceMax(m)
   }, [detailData])
@@ -323,38 +323,53 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   }, [detailData])
 
   const incorpMarkers: IncorpMarker[] = useMemo(() => {
-    if (formData.incorp === 'none') return []
+    if (formData.incorpDepth === 'none') return []
     if (!detailData.length) return []
 
-    if (formData.variable === 'incorp') {
+    if (variableName === 'incorp_time') {
       const markers: IncorpMarker[] = []
-      for (let i = 0; i < variantLabels.length; i++) {
-        const hour = parseIncorpHour(variantLabels[i])
-        if (hour == null) continue
-        let xHour = hour
+      values.forEach((value, i) => {
+        const hour = typeof value === 'number' ? value : parseFloat(String(value))
+        if (isNaN(hour) || hour < 0) return
+        let xHour = hour === 0 ? 1 : hour
         if (isAppTimeVariable && variantOffsets) {
-          xHour = hour + variantOffsets[i].offsetFromEarliest
+          xHour = (hour === 0 ? 1 : hour) + variantOffsets[i].offsetFromEarliest
         }
         markers.push({
           hour: xHour,
-          label: variantLabels[i],
+          label: variantLabel(t, variableName, value),
           color: VARIANT_COLORS[i % VARIANT_COLORS.length],
         })
-      }
+      })
       return markers
     }
 
     const targetHour = formData.incorpTime
+    if (targetHour < 0) return []
+    const markerHour = targetHour === 0 ? 1 : targetHour
+
+    if (isAppTimeVariable && variantOffsets) {
+      return values.map((value, i) => {
+        const offset = variantOffsets[i].offsetFromEarliest
+        return {
+          hour: markerHour + offset,
+          label: `${variantLabel(t, 'app_time', value)} — ${t('detail.incorp_marker', { depth: t(`variants.incorp_depth.${formData.incorpDepth}`), hours: formData.incorpTime })}`,
+          color: VARIANT_COLORS[i % VARIANT_COLORS.length],
+          hideLabel: true,
+        }
+      })
+    }
+
     const closest = (detailData as any[]).reduce((prev: any, curr: any) =>
-      Math.abs(curr.hour - targetHour) < Math.abs(prev.hour - targetHour) ? curr : prev,
+      Math.abs(curr.hour - markerHour) < Math.abs(prev.hour - markerHour) ? curr : prev,
     )
     if (!closest) return []
     return [{
       hour: closest.hour,
-      label: `Incorp (${formData.incorp}, ${formData.incorpTime}h)`,
+      label: t('detail.incorp_marker', { depth: t(`variants.incorp_depth.${formData.incorpDepth}`), hours: formData.incorpTime }),
       color: '#fbbf24',
     }]
-  }, [detailData, formData.incorp, formData.incorpTime, formData.variable, variantLabels, isAppTimeVariable, variantOffsets])
+  }, [detailData, formData.incorpDepth, formData.incorpTime, variableName, values, isAppTimeVariable, variantOffsets, t])
 
   const logTicks = useMemo(() => {
     const ticks = [1, 2, 4, 8, 24, 48, 96, 168]
@@ -364,15 +379,15 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
 
   const fmtLabel = useMemo(() => {
     if (!isAppTimeVariable) {
-      return (l: any) => typeof l === 'number' ? formatTimeAxis(l) : String(l)
+      return (l: any) => typeof l === 'number' ? formatTimeAxis(t, l) : String(l)
     }
     const baseDate = dayData ? new Date(dayData.start) : new Date()
     baseDate.setHours(earliestAppHour, 0, 0, 0)
     return (l: any) => {
       if (typeof l !== 'number') return String(l)
-      return formatHybridLabel(baseDate, l)
+      return formatHybridLabel(t, baseDate, l)
     }
-  }, [isAppTimeVariable, dayData, earliestAppHour])
+  }, [isAppTimeVariable, dayData, earliestAppHour, t])
 
   if (!dayData) return null
 
@@ -380,24 +395,23 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     <>
       {/* Fixed legend for emission chart */}
       <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-300 mb-1 shrink-0">
-        {variantLabels.map((label, i) => (
-          <span key={label} className="inline-flex items-center gap-1">
+        {values.map((value, i) => (
+          <span key={String(value)} className="inline-flex items-center gap-1">
             <span
               className="inline-block w-3 h-0.5"
               style={{ backgroundColor: VARIANT_COLORS[i % VARIANT_COLORS.length] }}
             />
-            {label}
+            {variantLabel(t, variableName, value)}
           </span>
         ))}
       </div>
 
-      {/* === EMISSION CHART (sticky y-axes, scrollable middle) === */}
+      {/* === EMISSION CHART === */}
       <div className="flex-[3] min-h-0 flex">
-        {/* Left fixed column: vertical label + left y-axis */}
         <div className="flex shrink-0 h-full">
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-              NH3 loss (% of TAN)
+              {t('charts.nh3_loss_pct')}
             </span>
           </div>
           <div style={{ width: 30 }} className="h-full">
@@ -420,7 +434,6 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           </div>
         </div>
 
-        {/* Middle scrollable column: main chart with hidden y-axes */}
         <div ref={emissionScrollRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[400px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -437,7 +450,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   scale="log"
                   domain={[1, maxHour]}
                   ticks={logTicks}
-                  tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(h)}
+                  tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(t, h)}
                   stroke="#94a3b8"
                   tick={{ fontSize: 10 }}
                 />
@@ -451,16 +464,18 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                     <EmissionTooltip
                       tanApp={formData.tanApp}
                       labelFormatter={fmtLabel}
-                      variantLabels={variantLabels}
+                      valueKeys={valueKeys}
                       forceHide={isTouch && !touchTooltipActive}
+                      unit={t('units.kg_per_ha')}
                     />
                   }
                 />
-                {variantLabels.map((label, i) => (
+                {values.map((value, i) => (
                   <Line
-                    key={label}
+                    key={String(value)}
                     type="monotone"
-                    dataKey={label}
+                    dataKey={String(value)}
+                    name={variantLabel(t, variableName, value)}
                     yAxisId="left"
                     stroke={VARIANT_COLORS[i % VARIANT_COLORS.length]}
                     dot={false}
@@ -471,13 +486,13 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                 ))}
                 {incorpMarkers.map((m) => (
                   <ReferenceLine
-                    key={m.label}
+                    key={m.hour + '-' + m.color}
                     yAxisId="left"
                     x={m.hour}
                     stroke={m.color}
                     strokeDasharray="4 2"
                     strokeWidth={2}
-                    label={{
+                    label={m.hideLabel ? undefined : {
                       value: m.label,
                       position: 'insideTopRight',
                       fill: m.color,
@@ -490,7 +505,6 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           </div>
         </div>
 
-        {/* Right fixed column: right y-axis + vertical label */}
         <div className="flex shrink-0 h-full">
           <div style={{ width: 30 }} className="h-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -516,35 +530,34 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           </div>
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-              NH3 loss (kg/ha)
+              {t('charts.nh3_loss_kgha')}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Fixed legend for weather chart */}
+      {/* Weather legend */}
       <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-300 mt-2 mb-1 shrink-0">
         <span className="inline-flex items-center gap-1">
           <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#f97316' }} />
-          Air temp (°C)
+          {t('charts.air_temp')}
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#22d3ee' }} />
-          Wind (km/h)
+          {t('charts.wind')}
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#3b82f6' }} />
-          Rain (mm/h)
+          {t('charts.rain')}
         </span>
       </div>
 
-      {/* === WEATHER CHART (sticky y-axes, scrollable middle) === */}
+      {/* === WEATHER CHART === */}
       <div className="flex-[2] min-h-0 flex">
-        {/* Left fixed column */}
         <div className="flex shrink-0 h-full">
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-              Temp (°C) / Wind (km/h)
+              {t('charts.temp_wind_short')}
             </span>
           </div>
           <div style={{ width: 30 }} className="h-full">
@@ -567,7 +580,6 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           </div>
         </div>
 
-        {/* Middle scrollable */}
         <div ref={weatherScrollRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[400px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -584,7 +596,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   scale="log"
                   domain={[1, maxHour]}
                   ticks={logTicks}
-                  tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(h)}
+                  tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(t, h)}
                   stroke="#94a3b8"
                   tick={{ fontSize: 10 }}
                 />
@@ -600,7 +612,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   yAxisId="right"
                   type="monotone"
                   dataKey="rain_rate"
-                  name="Rain (mm/h)"
+                  name={t('charts.rain')}
                   stroke="#3b82f6"
                   dot={false}
                   strokeWidth={2}
@@ -610,7 +622,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   yAxisId="left"
                   type="monotone"
                   dataKey="air_temp"
-                  name="Air temp (°C)"
+                  name={t('charts.air_temp')}
                   stroke="#f97316"
                   dot={false}
                   strokeWidth={2}
@@ -620,7 +632,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   yAxisId="left"
                   type="monotone"
                   dataKey="wind_kmh"
-                  name="Wind (km/h)"
+                  name={t('charts.wind')}
                   stroke="#22d3ee"
                   dot={false}
                   strokeWidth={2}
@@ -628,7 +640,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                 />
                 {incorpMarkers.map((m) => (
                   <ReferenceLine
-                    key={m.label}
+                    key={m.hour + '-' + m.color}
                     yAxisId="left"
                     x={m.hour}
                     stroke={m.color}
@@ -641,7 +653,6 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           </div>
         </div>
 
-        {/* Right fixed column */}
         <div className="flex shrink-0 h-full">
           <div style={{ width: 30 }} className="h-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -664,13 +675,13 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           </div>
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-              Rain (mm/h)
+              {t('charts.rain_short')}
             </span>
           </div>
         </div>
       </div>
       <p className="text-[10px] text-slate-500 mt-1">
-        Weather data by{' '}
+        {t('calculation.weather_by')}{' '}
         <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">
           Open-Meteo.com
         </a>
@@ -679,13 +690,19 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   )
 }
 
-function formatHybridLabel(baseDate: Date, hoursSinceBase: number): string {
+function formatTimeAxis(t: any, hour: number): string {
+  const days = Math.floor(hour / 24)
+  const hours = hour % 24
+  if (days === 0) return t('time.hours_short', { n: hours })
+  if (hours === 0) return t('time.days_short', { n: days })
+  return t('time.days_hours', { d: days, h: hours })
+}
+
+function formatHybridLabel(t: any, baseDate: Date, hoursSinceBase: number): string {
   const d = new Date(baseDate.getTime() + hoursSinceBase * 3600 * 1000)
   const pad = (n: number) => String(n).padStart(2, '0')
   const clock = `${pad(d.getHours())}:${pad(d.getMinutes())}`
   const daysSince = Math.floor(hoursSinceBase / 24)
-  if (daysSince === 0) return `${clock} (+${hoursSinceBase}h)`
-  const remaining = hoursSinceBase % 24
-  if (remaining === 0) return `Day ${daysSince}, ${clock} (+${hoursSinceBase}h)`
-  return `Day ${daysSince}, ${clock} (+${hoursSinceBase}h)`
+  if (daysSince === 0) return t('time.clock_offset', { clock, h: hoursSinceBase })
+  return t('time.day_clock', { day: daysSince, clock, h: hoursSinceBase })
 }

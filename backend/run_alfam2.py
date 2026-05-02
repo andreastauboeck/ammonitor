@@ -1,11 +1,11 @@
 """ALFAM2 model runner.
 
-Runs 7 days (day 0..6) in a single R call. Each day represents
+Runs N_DAYS consecutive days in a single R call. Each day represents
 applying manure at the start of that day and tracking cumulative NH3 loss
-over the following 168 hours (7 days).
+over the following PREDICTION_HOURS hours.
 
-Each day is run for all variants of the selected variable, giving
-7 * <num_variants> groups per R invocation.
+Each day is run for all variant values of the selected variable, giving
+N_DAYS * <num_values> groups per R invocation.
 """
 from __future__ import annotations
 
@@ -23,33 +23,39 @@ N_DAYS = 8
 PREDICTION_HOURS = 168
 
 VariableName = Literal[
-    "app.mthd", "app.time", "man.dm", "man.ph", "incorp", "incorp.depth", "man.source"
+    "app_mthd",
+    "app_time",
+    "man_dm",
+    "man_ph",
+    "incorp_depth",
+    "incorp_time",
+    "man_source",
 ]
 
 
 def run_alfam2(
     variable: VariableName,
-    variants: list[tuple[Any, str]],
+    values: list[Any],
     app_mthd: str = "th",
     man_dm: float = 6.0,
     man_ph: float = 7.5,
     man_source: str = "cattle",
     application_hour: int = 12,
-    incorp: str = "none",
-    incorp_time: float = 1.0,
+    incorp_depth: str = "none",
+    incorp_time: float = 0.0,
     weather_hourly: list[dict] = None,
     start_dates_iso: list[str] = None,
 ) -> dict:
     """Public entry point: validate and delegate to the R runner."""
     return _run_alfam2_r(
         variable=variable,
-        variants=variants,
+        values=values,
         app_mthd=app_mthd,
         man_dm=man_dm,
         man_ph=man_ph,
         man_source=man_source,
         application_hour=application_hour,
-        incorp=incorp,
+        incorp_depth=incorp_depth,
         incorp_time=incorp_time,
         weather_hourly=weather_hourly,
         start_dates_iso=start_dates_iso,
@@ -58,13 +64,13 @@ def run_alfam2(
 
 def _run_alfam2_r(
     variable: VariableName,
-    variants: list[tuple[Any, str]],
+    values: list[Any],
     app_mthd: str,
     man_dm: float,
     man_ph: float,
     man_source: str,
     application_hour: int,
-    incorp: str,
+    incorp_depth: str,
     incorp_time: float,
     weather_hourly: list[dict],
     start_dates_iso: list[str],
@@ -76,8 +82,8 @@ def _run_alfam2_r(
             f"Need at least {min_needed} hours of weather, got {len(weather_hourly)}"
         )
 
-    man_source_str = "pig" if man_source.lower() == "pig" else "cattle"
-    incorp_lc = incorp.lower() if incorp else "none"
+    man_source_str = "pig" if str(man_source).lower() == "pig" else "cattle"
+    incorp_lc = (incorp_depth or "none").lower()
     if incorp_lc not in ("none", "shallow", "deep"):
         incorp_lc = "none"
 
@@ -87,13 +93,13 @@ def _run_alfam2_r(
 
         rows = _build_input_rows(
             variable=variable,
-            variants=variants,
+            values=values,
             app_mthd=app_mthd,
             man_dm=man_dm,
             man_ph=man_ph,
             man_source_str=man_source_str,
             application_hour=application_hour,
-            incorp=incorp_lc,
+            incorp_depth=incorp_lc,
             incorp_time=incorp_time,
             weather_hourly=weather_hourly,
         )
@@ -140,14 +146,7 @@ def _run_alfam2_r(
         if not out_rows:
             raise ValueError("Empty output from ALFAM2")
 
-        return _parse_output(out_rows, start_dates_iso, variants)
-
-
-def _parse_app_hour(val) -> int:
-    s = str(val).strip()
-    if ":" in s:
-        return int(s.split(":", maxsplit=1)[0])
-    return int(float(s))
+        return _parse_output(out_rows, start_dates_iso, values)
 
 
 def _parse_float(val) -> float:
@@ -156,13 +155,13 @@ def _parse_float(val) -> float:
 
 def _build_input_rows(
     variable: VariableName,
-    variants: list[tuple[Any, str]],
+    values: list[Any],
     app_mthd: str,
     man_dm: float,
     man_ph: float,
     man_source_str: str,
     application_hour: int,
-    incorp: str,
+    incorp_depth: str,
     incorp_time: float,
     weather_hourly: list[dict],
 ) -> list[dict]:
@@ -171,46 +170,39 @@ def _build_input_rows(
     tan_app = 60.0  # Fixed reference; does not affect er (relative emission)
 
     for day_idx in range(N_DAYS):
-        for var_idx, (var_value, _var_label) in enumerate(variants):
+        for var_idx, var_value in enumerate(values):
             csv_id = f"d{day_idx}_v{var_idx}"
 
-            # Determine per-row values based on which variable is active
             row_dm = man_dm
             row_ph = man_ph
             row_source = man_source_str
             row_app_hour = application_hour
-            row_incorp = incorp
+            row_incorp_depth = incorp_depth
             row_incorp_time = incorp_time
+            app_mthd_val = app_mthd
 
-            if variable == "app.mthd":
-                app_mthd_val = var_value
-            else:
-                app_mthd_val = app_mthd
-
-            if variable == "man.dm":
+            if variable == "app_mthd":
+                app_mthd_val = str(var_value)
+            elif variable == "man_dm":
                 row_dm = _parse_float(var_value)
-            if variable == "man.ph":
+            elif variable == "man_ph":
                 row_ph = _parse_float(var_value)
-            if variable == "man.source":
+            elif variable == "man_source":
                 row_source = "pig" if str(var_value).lower() == "pig" else "cattle"
-            if variable == "app.time":
-                row_app_hour = _parse_app_hour(var_value)
-
-            if variable == "incorp":
+            elif variable == "app_time":
+                row_app_hour = int(var_value)
+            elif variable == "incorp_time":
                 row_incorp_time = _parse_float(var_value)
-
-            if variable == "incorp.depth":
-                row_incorp = var_value if var_value != "none" else "none"
-                # If depth is "none", don't send t.incorp
-                if var_value == "none":
-                    row_incorp = "none"
+            elif variable == "incorp_depth":
+                row_incorp_depth = str(var_value)
+                if row_incorp_depth == "none":
                     row_incorp_time = 0
 
             start_hour = day_idx * 24 + row_app_hour
 
-            # t.incorp and incorp: only meaningful when incorp != "none"
-            t_incorp_val = row_incorp_time if row_incorp != "none" else ""
-            incorp_val = row_incorp if row_incorp != "none" else ""
+            # incorp and t.incorp: only meaningful when depth != "none"
+            t_incorp_val = row_incorp_time if row_incorp_depth != "none" else ""
+            incorp_val = row_incorp_depth if row_incorp_depth != "none" else ""
 
             for hour_idx in range(1, PREDICTION_HOURS + 1):
                 weather_idx = start_hour + hour_idx - 1
@@ -252,8 +244,9 @@ def _safe_float(val) -> float:
 def _parse_output(
     out_rows: list[dict],
     start_dates_iso: list[str],
-    variants: list[tuple[any, str]],
+    values: list[Any],
 ) -> dict:
+    """Group R output rows by day and variant value, returning ordered arrays."""
     by_csv_id: dict[str, list[dict]] = {}
     for r in out_rows:
         csv_id = r.get("day_variant", "")
@@ -262,13 +255,12 @@ def _parse_output(
     days: list[dict] = []
     for day_idx in range(N_DAYS):
         start_iso = start_dates_iso[day_idx] if day_idx < len(start_dates_iso) else ""
-        variants_out: dict[str, dict] = {}
+        variants_out: list[dict] = []
 
-        for var_idx, (_var_value, var_label) in enumerate(variants):
+        for var_idx, var_value in enumerate(values):
             csv_id = f"d{day_idx}_v{var_idx}"
             rows = by_csv_id.get(csv_id, [])
             hourly: list[dict] = []
-            final_er = 0.0
             for r in rows:
                 try:
                     hour = int(float(r.get("ct", 0)))
@@ -276,16 +268,15 @@ def _parse_output(
                     continue
                 er = _safe_float(r.get("er"))
                 hourly.append({"hour": hour, "er": er})
-                final_er = er
 
             hourly.sort(key=lambda x: x["hour"])
-            if hourly:
-                final_er = hourly[-1]["er"]
+            final_er = hourly[-1]["er"] if hourly else 0.0
 
-            variants_out[var_label] = {
+            variants_out.append({
+                "value": var_value,
                 "final_loss_pct": round(final_er * 100.0, 2),
                 "hourly": hourly,
-            }
+            })
 
         days.append({
             "day": day_idx,
@@ -294,8 +285,6 @@ def _parse_output(
         })
 
     return {
-        "variable": None,  # filled by caller
-        "variant_labels": [label for _, label in variants],
         "days": days,
     }
 
@@ -307,19 +296,15 @@ if __name__ == "__main__":
          "rain_rate": 0.0}
         for i in range(400)
     ]
-    fake_dates = [f"2026-04-{20+i:02d}T00:00:00" for i in range(7)]
+    fake_dates = [f"2026-04-{20+i:02d}T00:00:00" for i in range(8)]
     result = run_alfam2(
-        variable="app.mthd",
-        variants=[
-            ("bc", "Broadcast"), ("th", "Trailing hose"),
-            ("ts", "Trailing shoe"), ("os", "Open slot"),
-            ("cs", "Closed slot"),
-        ],
+        variable="app_mthd",
+        values=["bc", "th", "ts", "os", "cs"],
         app_mthd="th",
         weather_hourly=fake_weather,
         start_dates_iso=fake_dates,
     )
     for day in result["days"]:
         print(f"Day {day['day']} ({day['start']}):")
-        for label, data in day["variants"].items():
-            print(f"  {label}: {data['final_loss_pct']:.2f}%")
+        for v in day["variants"]:
+            print(f"  {v['value']}: {v['final_loss_pct']:.2f}%")
