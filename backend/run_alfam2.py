@@ -45,6 +45,8 @@ def run_alfam2(
     incorp_time: float = 0.0,
     weather_hourly: list[dict] = None,
     start_dates_iso: list[str] = None,
+    conf_int: float | None = 0.95,
+    n_ci: int | None = None,
 ) -> dict:
     """Public entry point: validate and delegate to the R runner."""
     return _run_alfam2_r(
@@ -59,6 +61,8 @@ def run_alfam2(
         incorp_time=incorp_time,
         weather_hourly=weather_hourly,
         start_dates_iso=start_dates_iso,
+        conf_int=conf_int,
+        n_ci=n_ci,
     )
 
 
@@ -74,6 +78,8 @@ def _run_alfam2_r(
     incorp_time: float,
     weather_hourly: list[dict],
     start_dates_iso: list[str],
+    conf_int: float | None,
+    n_ci: int | None,
 ) -> dict:
     """Invoke the ALFAM2 R script with the given parameters."""
     min_needed = (N_DAYS - 1) * 24 + application_hour + PREDICTION_HOURS
@@ -125,8 +131,13 @@ def _run_alfam2_r(
             writer.writerows(rows)
 
         r_script = SCRIPT_DIR / "run_alfam2.R"
+        r_args = ["Rscript", str(r_script), input_file, output_file]
+        if conf_int is not None:
+            r_args.append(str(conf_int))
+            if n_ci is not None:
+                r_args.append(str(n_ci))
         proc = subprocess.run(
-            ["Rscript", str(r_script), input_file, output_file],
+            r_args,
             capture_output=True,
             text=True,
             timeout=120,
@@ -267,16 +278,28 @@ def _parse_output(
                 except (ValueError, TypeError):
                     continue
                 er = _safe_float(r.get("er"))
-                hourly.append({"hour": hour, "er": er})
+                point: dict = {"hour": hour, "er": er}
+                er_lwr = r.get("er.lwr", "")
+                er_upr = r.get("er.upr", "")
+                if er_lwr != "" and er_upr != "":
+                    point["er_lwr"] = _safe_float(er_lwr)
+                    point["er_upr"] = _safe_float(er_upr)
+                hourly.append(point)
 
             hourly.sort(key=lambda x: x["hour"])
             final_er = hourly[-1]["er"] if hourly else 0.0
+            final_point = hourly[-1] if hourly else {}
 
-            variants_out.append({
+            variant_out: dict = {
                 "value": var_value,
                 "final_loss_pct": round(final_er * 100.0, 2),
                 "hourly": hourly,
-            })
+            }
+            if "er_lwr" in final_point and "er_upr" in final_point:
+                variant_out["final_loss_lwr"] = round(final_point["er_lwr"] * 100.0, 2)
+                variant_out["final_loss_upr"] = round(final_point["er_upr"] * 100.0, 2)
+
+            variants_out.append(variant_out)
 
         days.append({
             "day": day_idx,

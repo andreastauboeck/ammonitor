@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   LineChart,
   Line,
+  Area,
   ComposedChart,
   XAxis,
   YAxis,
@@ -51,9 +52,22 @@ function EmissionTooltip({
   const variantEntries = payload.filter((p: any) =>
     valueKeys.includes(p.dataKey as any),
   )
-  const otherEntries = payload.filter(
-    (p: any) => !valueKeys.includes(p.dataKey as any),
+  const ciEntries = payload.filter((p: any) =>
+    (p.dataKey as string).endsWith('_lwr') || (p.dataKey as string).endsWith(CI_DELTA_SUFFIX),
   )
+  const otherEntries = payload.filter(
+    (p: any) => !valueKeys.includes(p.dataKey as any) && !ciEntries.includes(p),
+  )
+
+  const ciByBaseKey: Record<string, { lwr: number; upr: number }> = {}
+  for (const e of ciEntries) {
+    const dk = e.dataKey as string
+    if (dk.endsWith('_lwr')) {
+      const base = dk.slice(0, -4)
+      const deltaEntry = ciEntries.find((c: any) => (c.dataKey as string) === `${base}${CI_DELTA_SUFFIX}`)
+      ciByBaseKey[base] = { lwr: e.value as number, upr: (e.value as number) + (deltaEntry?.value ?? 0) }
+    }
+  }
 
   const labelText = labelFormatter ? labelFormatter(label) : label
 
@@ -73,9 +87,11 @@ function EmissionTooltip({
       {variantEntries.map((entry: any) => {
         const pct = entry.value as number
         const kg = (pct * tanApp) / 100
+        const ci = ciByBaseKey[entry.dataKey as string]
         return (
           <div key={entry.dataKey} style={{ color: entry.color }}>
             {entry.name}: {pct.toFixed(1)}% ({kg.toFixed(1)} {unit})
+            {ci && <span style={{ color: '#94a3b8', fontSize: '9px' }}> [{ci.lwr.toFixed(1)}–{ci.upr.toFixed(1)}%]</span>}
           </div>
         )
       })}
@@ -147,6 +163,8 @@ interface DetailChartProps {
   day: number
   formData: FormData
 }
+
+const CI_DELTA_SUFFIX = '_ci_delta'
 
 function makeTimeIso(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -262,6 +280,8 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           }
         }
         byKey[zeroKey][key] = 0
+        byKey[zeroKey][`${key}_lwr`] = 0
+        byKey[zeroKey][`${key}${CI_DELTA_SUFFIX}`] = 0
       }
 
       for (const p of variant.hourly) {
@@ -281,8 +301,29 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           }
         }
         byKey[k][key] = +(p.er * 100).toFixed(2)
+        if (p.er_lwr != null && p.er_upr != null) {
+          const lwr = +(p.er_lwr * 100).toFixed(2)
+          const upr = +(p.er_upr * 100).toFixed(2)
+          byKey[k][`${key}_lwr`] = lwr
+          byKey[k][`${key}_ci_delta`] = +(upr - lwr).toFixed(2)
+        }
       }
     }
+
+    const ciKeys = dayData.variants
+      .filter((v) => v.hourly.some((p) => p.er_lwr != null))
+      .map((v) => String(v.value))
+    if (ciKeys.length > 0) {
+      for (const row of Object.values(byKey)) {
+        for (const ck of ciKeys) {
+          if (row[`${ck}_lwr`] == null) {
+            row[`${ck}_lwr`] = 0
+            row[`${ck}${CI_DELTA_SUFFIX}`] = 0
+          }
+        }
+      }
+    }
+
     return Object.values(byKey).sort((a, b) => a.hour - b.hour)
   }, [dayData, weatherByTime, isAppTimeVariable, variantOffsets, earliestAppHour, t])
 
@@ -296,7 +337,10 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     for (const row of detailData as any[]) {
       for (const k of valueKeys) {
         const v = (row[k] ?? 0) as number
-        if (v > m) m = v
+        const vLwr = (row[`${k}_lwr`] ?? v) as number
+        const vDelta = (row[`${k}${CI_DELTA_SUFFIX}`] ?? 0) as number
+        const vUpr = vLwr + vDelta
+        if (vUpr > m) m = vUpr
       }
     }
     return niceMax(m)
@@ -321,6 +365,11 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     }
     return niceMax(Math.max(m, 1))
   }, [detailData])
+
+  const hasCiData = useMemo(() => {
+    if (!dayData) return false
+    return dayData.variants.some((v) => v.hourly.some((p) => p.er_lwr != null))
+  }, [dayData])
 
   const incorpMarkers: IncorpMarker[] = useMemo(() => {
     if (formData.incorpDepth === 'none') return []
@@ -404,6 +453,12 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
             {variantLabel(t, variableName, value)}
           </span>
         ))}
+        {hasCiData && (
+          <span className="inline-flex items-center gap-1 text-slate-500">
+            <span className="inline-block w-3 h-2 rounded-sm" style={{ backgroundColor: 'rgba(148,163,184,0.12)' }} />
+            95% CI
+          </span>
+        )}
       </div>
 
       {/* === EMISSION CHART === */}
@@ -437,7 +492,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
         <div ref={emissionScrollRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[400px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart
+              <ComposedChart
                 data={detailData}
                 margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
                 syncId="detail-charts"
@@ -470,20 +525,55 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                     />
                   }
                 />
-                {values.map((value, i) => (
-                  <Line
-                    key={String(value)}
-                    type="monotone"
-                    dataKey={String(value)}
-                    name={variantLabel(t, variableName, value)}
-                    yAxisId="left"
-                    stroke={VARIANT_COLORS[i % VARIANT_COLORS.length]}
-                    dot={false}
-                    strokeWidth={2}
-                    connectNulls
-                    activeDot={isTouch ? (touchTooltipActive ? { r: 4, strokeWidth: 0 } : false) : undefined}
-                  />
-                ))}
+                {values.map((value, i) => {
+                  const k = String(value)
+                  const color = VARIANT_COLORS[i % VARIANT_COLORS.length]
+                  const hasCi = detailData.some((r: any) => r[`${k}_lwr`] != null)
+                  return (
+                    <Fragment key={k}>
+                      {hasCi && (
+                        <>
+                          <Area
+                            yAxisId="left"
+                            type="monotone"
+                            dataKey={`${k}_lwr`}
+                            stackId={`ci-${k}`}
+                            stroke="none"
+                            fill="transparent"
+                            fillOpacity={0}
+                            dot={false}
+                            activeDot={false}
+                            isAnimationActive={false}
+                          />
+                          <Area
+                            yAxisId="left"
+                            type="monotone"
+                            dataKey={`${k}${CI_DELTA_SUFFIX}`}
+                            stackId={`ci-${k}`}
+                            stroke={color}
+                            strokeWidth={0}
+                            fill={color}
+                            fillOpacity={0.12}
+                            dot={false}
+                            activeDot={false}
+                            isAnimationActive={false}
+                          />
+                        </>
+                      )}
+                      <Line
+                        type="monotone"
+                        dataKey={k}
+                        name={variantLabel(t, variableName, value)}
+                        yAxisId="left"
+                        stroke={color}
+                        dot={false}
+                        strokeWidth={2}
+                        connectNulls
+                        activeDot={isTouch ? (touchTooltipActive ? { r: 4, strokeWidth: 0 } : false) : undefined}
+                      />
+                    </Fragment>
+                  )
+                })}
                 {incorpMarkers.map((m) => (
                   <ReferenceLine
                     key={m.hour + '-' + m.color}
@@ -500,7 +590,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                     }}
                   />
                 ))}
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>

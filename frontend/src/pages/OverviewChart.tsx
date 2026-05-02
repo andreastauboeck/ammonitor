@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   BarChart,
   Bar,
+  ErrorBar,
   ComposedChart,
   Area,
   Line,
@@ -31,11 +32,24 @@ interface EmissionTooltipProps {
   tanApp: number
   forceHide?: boolean
   unit: string
+  valueKeys: string[]
 }
 
-function EmissionTooltip({ active, payload, label, tanApp, forceHide, unit }: EmissionTooltipProps) {
+function EmissionTooltip({ active, payload, label, tanApp, forceHide, unit, valueKeys }: EmissionTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
+
+  const ciKeys = valueKeys.map((k) => `${k}_ci`)
+
+  const variantEntries = payload.filter((p: any) => valueKeys.includes(p.dataKey))
+  const ciEntries = payload.filter((p: any) => ciKeys.includes(p.dataKey))
+
+  const ciByBase: Record<string, number[]> = {}
+  for (const e of ciEntries) {
+    const base = (e.dataKey as string).replace('_ci', '')
+    ciByBase[base] = e.value as number[]
+  }
+
   return (
     <div
       style={{
@@ -49,12 +63,14 @@ function EmissionTooltip({ active, payload, label, tanApp, forceHide, unit }: Em
       }}
     >
       <div style={{ fontWeight: 600 }}>{label}</div>
-      {payload.map((entry: any) => {
+      {variantEntries.map((entry: any) => {
         const pct = entry.value as number
         const kg = (pct * tanApp) / 100
+        const ci = ciByBase[entry.dataKey as string]
         return (
           <div key={entry.dataKey} style={{ color: entry.color }}>
             {entry.name}: {pct.toFixed(1)}% ({kg.toFixed(1)} {unit})
+            {ci && <span style={{ color: '#94a3b8', fontSize: '9px' }}> [{(pct - ci[0]).toFixed(1)}–{(pct + ci[1]).toFixed(1)}%]</span>}
           </div>
         )
       })}
@@ -126,6 +142,10 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
   const [touchTooltipActive, setTouchTooltipActive] = useState(false)
   const autoDismissRef = useRef<ReturnType<typeof setTimeout>>()
 
+  const hasCiData = useMemo(() => {
+    return data.days.some((d) => d.variants.some((v) => v.final_loss_lwr != null))
+  }, [data])
+
   const overviewData = useMemo(() => {
     return data.days.map((d) => {
       const row: Record<string, any> = {
@@ -139,6 +159,12 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
       }
       for (const v of d.variants) {
         row[String(v.value)] = v.final_loss_pct
+        if (v.final_loss_lwr != null && v.final_loss_upr != null) {
+          row[`${String(v.value)}_ci`] = [
+            +(v.final_loss_pct - v.final_loss_lwr).toFixed(2),
+            +(v.final_loss_upr - v.final_loss_pct).toFixed(2),
+          ]
+        }
       }
       return row
     })
@@ -149,7 +175,9 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
     for (const row of overviewData) {
       for (const v of values) {
         const cell = row[String(v)] ?? 0
-        if (cell > m) m = cell
+        const ci = row[`${String(v)}_ci`]
+        const upr = ci ? cell + ci[1] : cell
+        if (upr > m) m = upr
       }
     }
     return niceMax(m)
@@ -264,6 +292,11 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
             {variantLabel(t, variableName, value)}
           </span>
         ))}
+        {hasCiData && (
+          <span className="inline-flex items-center gap-1 text-slate-500">
+            ─╴ 95% CI
+          </span>
+        )}
       </div>
 
       <div className="flex-[3] min-h-0 flex">
@@ -317,19 +350,33 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                 <YAxis yAxisId="right" orientation="right" domain={[0, overviewMax]} hide />
                 <Tooltip
                   trigger={isTouch ? 'click' : 'hover'}
-                  content={<EmissionTooltip tanApp={formData.tanApp} forceHide={isTouch} unit={t('units.kg_per_ha')} />}
+                  content={<EmissionTooltip tanApp={formData.tanApp} forceHide={isTouch} unit={t('units.kg_per_ha')} valueKeys={values.map(String)} />}
                   cursor={isTouch ? false : { fill: 'rgba(148, 163, 184, 0.1)' }}
                 />
-                {values.map((value, i) => (
-                  <Bar
-                    key={String(value)}
-                    dataKey={String(value)}
-                    name={variantLabel(t, variableName, value)}
-                    yAxisId="left"
-                    fill={VARIANT_COLORS[i % VARIANT_COLORS.length]}
-                    cursor="pointer"
-                  />
-                ))}
+                {values.map((value, i) => {
+                  const k = String(value)
+                  const color = VARIANT_COLORS[i % VARIANT_COLORS.length]
+                  const hasCi = overviewData.some((r: any) => r[`${k}_ci`] != null)
+                  return (
+                    <Bar
+                      key={k}
+                      dataKey={k}
+                      name={variantLabel(t, variableName, value)}
+                      yAxisId="left"
+                      fill={color}
+                      cursor="pointer"
+                    >
+                      {hasCi && (
+                        <ErrorBar
+                          dataKey={`${k}_ci`}
+                          width={4}
+                          strokeWidth={1}
+                          stroke={color}
+                        />
+                      )}
+                    </Bar>
+                  )
+                })}
               </BarChart>
             </ResponsiveContainer>
           </div>
