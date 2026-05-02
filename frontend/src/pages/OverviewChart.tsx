@@ -19,6 +19,8 @@ import {
   VARIANT_COLORS,
   niceMax,
 } from './types'
+import { useTheme } from '../theme/ThemeContext'
+import { getChartColors, type ChartColors } from '../theme/chartColors'
 
 function variantLabel(t: any, variable: VariableName, value: string | number): string {
   return t(`variants.${variable}.${value}`, { defaultValue: String(value) })
@@ -31,20 +33,21 @@ interface EmissionTooltipProps {
   tanApp: number
   forceHide?: boolean
   unit: string
+  colors: ChartColors
 }
 
-function EmissionTooltip({ active, payload, label, tanApp, forceHide, unit }: EmissionTooltipProps) {
+function EmissionTooltip({ active, payload, label, tanApp, forceHide, unit, colors }: EmissionTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
   return (
     <div
       style={{
-        backgroundColor: '#1e293b',
-        border: '1px solid #475569',
+        backgroundColor: colors.tooltipBg,
+        border: `1px solid ${colors.tooltipBorder}`,
         borderRadius: '6px',
         padding: '4px 6px',
         fontSize: '10px',
-        color: '#e2e8f0',
+        color: colors.tooltipText,
         lineHeight: '1.25',
       }}
     >
@@ -67,9 +70,10 @@ interface WeatherTooltipProps {
   payload?: any[]
   label?: string | number
   forceHide?: boolean
+  colors: ChartColors
 }
 
-function WeatherTooltip({ active, payload, label, forceHide }: WeatherTooltipProps) {
+function WeatherTooltip({ active, payload, label, forceHide, colors }: WeatherTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
   const showKeys = ['air_temp', 'wind_kmh', 'rain_rate']
@@ -77,12 +81,12 @@ function WeatherTooltip({ active, payload, label, forceHide }: WeatherTooltipPro
   return (
     <div
       style={{
-        backgroundColor: '#1e293b',
-        border: '1px solid #475569',
+        backgroundColor: colors.tooltipBg,
+        border: `1px solid ${colors.tooltipBorder}`,
         borderRadius: '6px',
         padding: '4px 6px',
         fontSize: '10px',
-        color: '#e2e8f0',
+        color: colors.tooltipText,
         lineHeight: '1.25',
       }}
     >
@@ -117,6 +121,8 @@ interface OverviewChartProps {
 
 export default function OverviewChart({ data, formData, onDayClick }: OverviewChartProps) {
   const { t, i18n } = useTranslation()
+  const { resolved } = useTheme()
+  const colors = getChartColors(resolved)
   const variableName = data.variable
   const values = data.values
   const isTouch = useIsTouch()
@@ -254,7 +260,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
   return (
     <>
       {/* Fixed legend */}
-      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-300 mb-1 shrink-0">
+      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-700 dark:text-slate-300 mb-1 shrink-0">
         {values.map((value, i) => (
           <span key={String(value)} className="inline-flex items-center gap-1">
             <span
@@ -270,7 +276,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
         {/* Left fixed column: vertical label + left y-axis */}
         <div className="flex shrink-0 h-full">
           <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
               {t('charts.nh3_loss_pct')}
             </span>
           </div>
@@ -281,10 +287,10 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                 margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
               >
                 <YAxis
-                  key={`left-${overviewMax}`}
+                  key={`left-${overviewMax}-${resolved}`}
                   yAxisId="left"
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 9 }}
+                  stroke={colors.axis}
+                  tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, overviewMax]}
                   width={30}
                 />
@@ -311,14 +317,14 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                   }
                 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                <XAxis dataKey="dayLabel" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
+                <XAxis dataKey="dayLabel" stroke={colors.axis} tick={{ fontSize: 11, fill: colors.axis }} />
                 <YAxis yAxisId="left" domain={[0, overviewMax]} hide />
                 <YAxis yAxisId="right" orientation="right" domain={[0, overviewMax]} hide />
                 <Tooltip
                   trigger={isTouch ? 'click' : 'hover'}
-                  content={<EmissionTooltip tanApp={formData.tanApp} forceHide={isTouch} unit={t('units.kg_per_ha')} />}
-                  cursor={isTouch ? false : { fill: 'rgba(148, 163, 184, 0.1)' }}
+                  content={<EmissionTooltip tanApp={formData.tanApp} forceHide={isTouch} unit={t('units.kg_per_ha')} colors={colors} />}
+                  cursor={isTouch ? false : { fill: colors.cursorFill }}
                 />
                 {values.map((value, i) => (
                   <Bar
@@ -344,11 +350,11 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                 margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
               >
                 <YAxis
-                  key={`right-${overviewMax}-${formData.tanApp}`}
+                  key={`right-${overviewMax}-${formData.tanApp}-${resolved}`}
                   yAxisId="right"
                   orientation="right"
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 9 }}
+                  stroke={colors.axis}
+                  tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, overviewMax]}
                   tickFormatter={(v: number) =>
                     ((v * formData.tanApp) / 100).toFixed(1)
@@ -360,7 +366,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
             </ResponsiveContainer>
           </div>
           <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
               {t('charts.nh3_loss_kgha')}
             </span>
           </div>
@@ -368,7 +374,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
       </div>
 
       {/* Weather legend */}
-      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-300 mt-2 mb-1 shrink-0">
+      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-700 dark:text-slate-300 mt-2 mb-1 shrink-0">
         <span className="inline-flex items-center gap-1">
           <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#f97316' }} />
           {t('charts.avg_temp')}
@@ -387,7 +393,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
       <div className="flex-[2] min-h-0 flex">
         <div className="flex shrink-0 h-full">
           <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
               {t('charts.temp_wind_short')}
             </span>
           </div>
@@ -398,9 +404,10 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                 margin={{ top: 5, right: 0, left: 0, bottom: 30 }}
               >
                 <YAxis
+                  key={`left-w-${weatherLeftMax}-${resolved}`}
                   yAxisId="left"
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 9 }}
+                  stroke={colors.axis}
+                  tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, weatherLeftMax]}
                   width={30}
                 />
@@ -419,14 +426,14 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                 syncId="overview-charts"
                 onClick={isTouch ? handleWeatherClick : undefined}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                <XAxis dataKey="dayLabel" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
+                <XAxis dataKey="dayLabel" stroke={colors.axis} tick={{ fontSize: 11, fill: colors.axis }} />
                 <YAxis yAxisId="left" domain={[0, weatherLeftMax]} hide />
                 <YAxis yAxisId="right" orientation="right" domain={[0, weatherRightMax]} hide />
                 <Tooltip
                   trigger={isTouch ? 'click' : 'hover'}
-                  content={<WeatherTooltip forceHide={isTouch} />}
-                  cursor={isTouch ? false : { fill: 'rgba(148, 163, 184, 0.1)' }}
+                  content={<WeatherTooltip forceHide={isTouch} colors={colors} />}
+                  cursor={isTouch ? false : { fill: colors.cursorFill }}
                 />
                 <Area
                   yAxisId="left"
@@ -524,10 +531,11 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                 margin={{ top: 5, right: 0, left: 0, bottom: 30 }}
               >
                 <YAxis
+                  key={`right-w-${weatherRightMax}-${resolved}`}
                   yAxisId="right"
                   orientation="right"
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 9 }}
+                  stroke={colors.axis}
+                  tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, weatherRightMax]}
                   width={30}
                 />
@@ -536,7 +544,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
             </ResponsiveContainer>
           </div>
           <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
               {t('charts.rain_short')}
             </span>
           </div>

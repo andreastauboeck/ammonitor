@@ -9,6 +9,11 @@
     "en": "English",
     "de": "Deutsch"
   },
+  "theme": {
+    "light": "Hell",
+    "dark": "Dunkel",
+    "system": "System"
+  },
   "units": {
     "kg_per_ha": "kg/ha"
   },

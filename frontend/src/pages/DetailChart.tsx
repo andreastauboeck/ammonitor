@@ -19,6 +19,8 @@ import {
   VARIANT_COLORS,
   niceMax,
 } from './types'
+import { useTheme } from '../theme/ThemeContext'
+import { getChartColors, type ChartColors } from '../theme/chartColors'
 
 function variantLabel(t: any, variable: VariableName, value: string | number): string {
   return t(`variants.${variable}.${value}`, { defaultValue: String(value) })
@@ -33,6 +35,7 @@ interface EmissionTooltipProps {
   valueKeys: string[]
   forceHide?: boolean
   unit: string
+  colors: ChartColors
 }
 
 function EmissionTooltip({
@@ -44,6 +47,7 @@ function EmissionTooltip({
   valueKeys,
   forceHide,
   unit,
+  colors,
 }: EmissionTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
@@ -60,12 +64,12 @@ function EmissionTooltip({
   return (
     <div
       style={{
-        backgroundColor: '#1e293b',
-        border: '1px solid #475569',
+        backgroundColor: colors.tooltipBg,
+        border: `1px solid ${colors.tooltipBorder}`,
         borderRadius: '6px',
         padding: '4px 6px',
         fontSize: '10px',
-        color: '#e2e8f0',
+        color: colors.tooltipText,
         lineHeight: '1.25',
       }}
     >
@@ -94,21 +98,22 @@ interface WeatherTooltipProps {
   label?: string | number
   labelFormatter?: (l: any) => string
   forceHide?: boolean
+  colors: ChartColors
 }
 
-function WeatherTooltip({ active, payload, label, labelFormatter, forceHide }: WeatherTooltipProps) {
+function WeatherTooltip({ active, payload, label, labelFormatter, forceHide, colors }: WeatherTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
   const labelText = labelFormatter ? labelFormatter(label) : label
   return (
     <div
       style={{
-        backgroundColor: '#1e293b',
-        border: '1px solid #475569',
+        backgroundColor: colors.tooltipBg,
+        border: `1px solid ${colors.tooltipBorder}`,
         borderRadius: '6px',
         padding: '4px 6px',
         fontSize: '10px',
-        color: '#e2e8f0',
+        color: colors.tooltipText,
         lineHeight: '1.25',
       }}
     >
@@ -155,6 +160,8 @@ function makeTimeIso(d: Date): string {
 
 export default function DetailChart({ data, day, formData }: DetailChartProps) {
   const { t } = useTranslation()
+  const { resolved } = useTheme()
+  const colors = getChartColors(resolved)
   const emissionScrollRef = useRef<HTMLDivElement>(null)
   const weatherScrollRef = useRef<HTMLDivElement>(null)
   const isSyncingRef = useRef(false)
@@ -394,7 +401,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   return (
     <>
       {/* Fixed legend for emission chart */}
-      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-300 mb-1 shrink-0">
+      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-700 dark:text-slate-300 mb-1 shrink-0">
         {values.map((value, i) => (
           <span key={String(value)} className="inline-flex items-center gap-1">
             <span
@@ -410,7 +417,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
       <div className="flex-[3] min-h-0 flex">
         <div className="flex shrink-0 h-full">
           <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
               {t('charts.nh3_loss_pct')}
             </span>
           </div>
@@ -421,10 +428,10 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                 margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
               >
                 <YAxis
-                  key={`detail-left-${detailMax}`}
+                  key={`detail-left-${detailMax}-${resolved}`}
                   yAxisId="left"
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 9 }}
+                  stroke={colors.axis}
+                  tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, detailMax]}
                   width={30}
                 />
@@ -443,7 +450,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                 syncId="detail-charts"
                 onClick={isTouch ? handleChartClick : undefined}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
                 <XAxis
                   dataKey="hour"
                   type="number"
@@ -451,14 +458,14 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   domain={[1, maxHour]}
                   ticks={logTicks}
                   tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(t, h)}
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 10 }}
+                  stroke={colors.axis}
+                  tick={{ fontSize: 10, fill: colors.axis }}
                 />
                 <YAxis yAxisId="left" domain={[0, detailMax]} hide />
                 <YAxis yAxisId="right" orientation="right" domain={[0, detailMax]} hide />
                 <Tooltip
                   trigger={tooltipTrigger}
-                  cursor={isTouch ? (touchTooltipActive ? { fill: 'rgba(148, 163, 184, 0.1)' } : false) : { fill: 'rgba(148, 163, 184, 0.1)' }}
+                  cursor={isTouch ? (touchTooltipActive ? { fill: colors.cursorFill } : false) : { fill: colors.cursorFill }}
                   wrapperStyle={isTouch && !touchTooltipActive ? { visibility: 'hidden' } : undefined}
                   content={
                     <EmissionTooltip
@@ -467,6 +474,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                       valueKeys={valueKeys}
                       forceHide={isTouch && !touchTooltipActive}
                       unit={t('units.kg_per_ha')}
+                      colors={colors}
                     />
                   }
                 />
@@ -513,11 +521,11 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                 margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
               >
                 <YAxis
-                  key={`detail-right-${detailMax}-${formData.tanApp}`}
+                  key={`detail-right-${detailMax}-${formData.tanApp}-${resolved}`}
                   yAxisId="right"
                   orientation="right"
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 9 }}
+                  stroke={colors.axis}
+                  tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, detailMax]}
                   tickFormatter={(v: number) =>
                     ((v * formData.tanApp) / 100).toFixed(1)
@@ -529,7 +537,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
             </ResponsiveContainer>
           </div>
           <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
               {t('charts.nh3_loss_kgha')}
             </span>
           </div>
@@ -537,7 +545,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
       </div>
 
       {/* Weather legend */}
-      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-300 mt-2 mb-1 shrink-0">
+      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-700 dark:text-slate-300 mt-2 mb-1 shrink-0">
         <span className="inline-flex items-center gap-1">
           <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#f97316' }} />
           {t('charts.air_temp')}
@@ -556,7 +564,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
       <div className="flex-[2] min-h-0 flex">
         <div className="flex shrink-0 h-full">
           <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
               {t('charts.temp_wind_short')}
             </span>
           </div>
@@ -567,10 +575,10 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                 margin={{ top: 5, right: 0, left: 0, bottom: 30 }}
               >
                 <YAxis
-                  key={`weather-left-${weatherLeftMax}`}
+                  key={`weather-left-${weatherLeftMax}-${resolved}`}
                   yAxisId="left"
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 9 }}
+                  stroke={colors.axis}
+                  tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, weatherLeftMax]}
                   width={30}
                 />
@@ -589,7 +597,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                 syncId="detail-charts"
                 onClick={isTouch ? handleChartClick : undefined}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
                 <XAxis
                   dataKey="hour"
                   type="number"
@@ -597,16 +605,16 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   domain={[1, maxHour]}
                   ticks={logTicks}
                   tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(t, h)}
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 10 }}
+                  stroke={colors.axis}
+                  tick={{ fontSize: 10, fill: colors.axis }}
                 />
                 <YAxis yAxisId="left" domain={[0, weatherLeftMax]} hide />
                 <YAxis yAxisId="right" orientation="right" domain={[0, weatherRightMax]} hide />
                 <Tooltip
                   trigger={tooltipTrigger}
-                  cursor={isTouch ? (touchTooltipActive ? { fill: 'rgba(148, 163, 184, 0.1)' } : false) : { fill: 'rgba(148, 163, 184, 0.1)' }}
+                  cursor={isTouch ? (touchTooltipActive ? { fill: colors.cursorFill } : false) : { fill: colors.cursorFill }}
                   wrapperStyle={isTouch && !touchTooltipActive ? { visibility: 'hidden' } : undefined}
-                  content={<WeatherTooltip labelFormatter={fmtLabel} forceHide={isTouch && !touchTooltipActive} />}
+                  content={<WeatherTooltip labelFormatter={fmtLabel} forceHide={isTouch && !touchTooltipActive} colors={colors} />}
                 />
                 <Line
                   yAxisId="right"
@@ -661,11 +669,11 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                 margin={{ top: 5, right: 0, left: 0, bottom: 30 }}
               >
                 <YAxis
-                  key={`weather-right-${weatherRightMax}`}
+                  key={`weather-right-${weatherRightMax}-${resolved}`}
                   yAxisId="right"
                   orientation="right"
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 9 }}
+                  stroke={colors.axis}
+                  tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, weatherRightMax]}
                   width={30}
                 />
@@ -674,7 +682,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
             </ResponsiveContainer>
           </div>
           <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
               {t('charts.rain_short')}
             </span>
           </div>
