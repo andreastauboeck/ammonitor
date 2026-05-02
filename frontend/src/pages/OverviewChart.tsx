@@ -548,12 +548,6 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
           {isTouch ? t('calculation.tip_tap') : t('calculation.tip_click')}
         </p>
       )}
-      <p className="text-[10px] text-slate-500 mt-1">
-        {t('calculation.weather_by')}{' '}
-        <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">
-          Open-Meteo.com
-        </a>
-      </p>
     </>
   )
 }

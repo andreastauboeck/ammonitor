@@ -82,6 +82,7 @@ export default function Calculation() {
 
   const [locationName, setLocationName] = useState<string | null>(null)
   const [locationLoading, setLocationLoading] = useState(true)
+  const [alfam2Info, setAlfam2Info] = useState<{ version: string; parsSet: string } | null>(null)
 
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -91,6 +92,15 @@ export default function Calculation() {
   const [showRadioHint, setShowRadioHint] = useState(false)
 
 
+
+  useEffect(() => {
+    fetch('/api/status')
+      .then((res) => res.json())
+      .then((d) => {
+        if (d.alfam2_version) setAlfam2Info({ version: d.alfam2_version, parsSet: d.alfam2_pars_set })
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     const p = new URLSearchParams(serializeForm(formData))
@@ -278,7 +288,7 @@ export default function Calculation() {
             </button>
           ) : (
             <Link
-              to={`/?lat=${lat}&lng=${lng}`}
+              to="/"
               className="inline-flex items-center gap-2 text-slate-400 hover:text-slate-200"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -287,6 +297,14 @@ export default function Calculation() {
               {t('calculation.back_to_map')}
             </Link>
           )}
+          <Link to="/" className="flex-1 text-center">
+            <span className="inline-flex items-center gap-1.5 text-slate-300 hover:text-slate-100 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-emerald-400">
+                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+              </svg>
+              <span className="hidden sm:inline font-semibold text-sm">ammonitor</span>
+            </span>
+          </Link>
           <div className="ml-auto">
             <LanguageSwitcher />
           </div>
@@ -308,10 +326,6 @@ export default function Calculation() {
           ) : (
             <p className="text-2xl font-bold">{lat}, {lng}</p>
           )}
-          <p className="text-[10px] text-slate-500 mt-0.5">
-            {t('calculation.geocoding_by')}{' '}
-            <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">Nominatim</a>
-          </p>
         </div>
 
         <div className="flex flex-col md:flex-row gap-4 md:gap-6">
@@ -486,6 +500,11 @@ export default function Calculation() {
                       variable: t(`variables.${formData.variable}`),
                     })}
               </h2>
+              {alfam2Info && selectedDay === null && (
+                <span className="text-[10px] text-slate-600 ml-2 shrink-0 hidden sm:inline">
+                  ALFAM2 v{alfam2Info.version} · {t('calculation.pars_set', { parsSet: alfam2Info.parsSet })}
+                </span>
+              )}
               {selectedDay !== null && (
                 <button
                   onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.min((data?.days.length ?? 1) - 1, selectedDay + 1)}`, { replace: true })}

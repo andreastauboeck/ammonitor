@@ -141,7 +141,8 @@ Returns `{"status": "ok", "version": "0.3.0", "environment": "production"}`
 - **TAN applied:** Dropdown preset, never a variable. `er` is independent of TAN; kg/ha is computed frontend-side as `er × tanApp / 100`.
 - **app_time detail chart:** When `app_time` is the variable, emission lines start at their actual clock time. X-axis uses hybrid labels (clock + elapsed hours). Weather aligns naturally via real-time lookup. Later-starting variants get a 0% emission start point.
 - **Incorp markers:** When `incorp_time` is the variable, each variant gets a dashed reference line at its incorp hour in the matching variant color. When fixed, a single yellow marker appears.
-- **LanguageSwitcher** lives in `components/`, used in Home, Calculation, Imprint, Privacy, Terms.---
+- **LanguageSwitcher** lives in `components/`, used in Home, Calculation, Imprint, Privacy, Terms.
+- **Navigation model (Option B):** No auto-redirect from `/`. `/` always shows the landing page. Recent locations are shown in a dropdown (from localStorage `ammonitor-locations`), most recent highlighted. User clicks a saved location → marker placed on map → clicks "Start Calculation" → navigates to `/calculate/{lat}/{lng}`. "Back to map" from Calculation is a simple `Link to="/"` with no side effects.---
 
 ## Backend Conventions
 
