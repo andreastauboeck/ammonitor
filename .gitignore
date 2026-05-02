@@ -180,6 +180,9 @@ cython_debug/
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/*.tsbuildinfo
 
 # Env files
 .env

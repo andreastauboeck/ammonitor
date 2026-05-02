@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   LineChart,
   Line,
@@ -7,7 +8,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
@@ -15,10 +15,14 @@ import {
   type ApiResponse,
   type FormData,
   type WeatherPoint,
+  type VariableName,
   VARIANT_COLORS,
-  formatTimeAxis,
   niceMax,
 } from './types'
+
+function variantLabel(t: any, variable: VariableName, value: string | number): string {
+  return t(`variants.${variable}.${value}`, { defaultValue: String(value) })
+}
 
 interface EmissionTooltipProps {
   active?: boolean
@@ -26,7 +30,9 @@ interface EmissionTooltipProps {
   label?: string | number
   tanApp: number
   labelFormatter?: (l: any) => string
-  variantLabels: string[]
+  valueKeys: string[]
+  forceHide?: boolean
+  unit: string
 }
 
 function EmissionTooltip({
@@ -35,15 +41,18 @@ function EmissionTooltip({
   label,
   tanApp,
   labelFormatter,
-  variantLabels,
+  valueKeys,
+  forceHide,
+  unit,
 }: EmissionTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
+  if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
 
   const variantEntries = payload.filter((p: any) =>
-    variantLabels.includes(p.dataKey as any),
+    valueKeys.includes(p.dataKey as any),
   )
   const otherEntries = payload.filter(
-    (p: any) => !variantLabels.includes(p.dataKey as any),
+    (p: any) => !valueKeys.includes(p.dataKey as any),
   )
 
   const labelText = labelFormatter ? labelFormatter(label) : label
@@ -53,24 +62,25 @@ function EmissionTooltip({
       style={{
         backgroundColor: '#1e293b',
         border: '1px solid #475569',
-        borderRadius: '8px',
-        padding: '8px 10px',
-        fontSize: '12px',
+        borderRadius: '6px',
+        padding: '4px 6px',
+        fontSize: '10px',
         color: '#e2e8f0',
+        lineHeight: '1.25',
       }}
     >
-      <div style={{ marginBottom: 4, fontWeight: 600 }}>{labelText}</div>
+      <div style={{ fontWeight: 600 }}>{labelText}</div>
       {variantEntries.map((entry: any) => {
         const pct = entry.value as number
         const kg = (pct * tanApp) / 100
         return (
-          <div key={entry.dataKey} style={{ color: entry.color, lineHeight: '1.4' }}>
-            {entry.dataKey}: {pct.toFixed(2)}% ({kg.toFixed(2)} kg/ha)
+          <div key={entry.dataKey} style={{ color: entry.color }}>
+            {entry.name}: {pct.toFixed(1)}% ({kg.toFixed(1)} {unit})
           </div>
         )
       })}
       {otherEntries.map((entry: any) => (
-        <div key={entry.dataKey} style={{ color: entry.color, lineHeight: '1.4' }}>
+        <div key={entry.dataKey} style={{ color: entry.color }}>
           {entry.name}: {entry.value}
         </div>
       ))}
@@ -78,10 +88,58 @@ function EmissionTooltip({
   )
 }
 
+interface WeatherTooltipProps {
+  active?: boolean
+  payload?: any[]
+  label?: string | number
+  labelFormatter?: (l: any) => string
+  forceHide?: boolean
+}
+
+function WeatherTooltip({ active, payload, label, labelFormatter, forceHide }: WeatherTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null
+  if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
+  const labelText = labelFormatter ? labelFormatter(label) : label
+  return (
+    <div
+      style={{
+        backgroundColor: '#1e293b',
+        border: '1px solid #475569',
+        borderRadius: '6px',
+        padding: '4px 6px',
+        fontSize: '10px',
+        color: '#e2e8f0',
+        lineHeight: '1.25',
+      }}
+    >
+      <div style={{ fontWeight: 600 }}>{labelText}</div>
+      {payload.map((entry: any) => (
+        <div key={entry.dataKey} style={{ color: entry.color }}>
+          {entry.name}: {entry.value}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function useIsTouch() {
+  const [isTouch, setIsTouch] = useState(false)
+  useEffect(() => {
+    const check = () =>
+      typeof window !== 'undefined' &&
+      ('ontouchstart' in window ||
+        navigator.maxTouchPoints > 0 ||
+        window.matchMedia('(pointer: coarse)').matches)
+    setIsTouch(check())
+  }, [])
+  return isTouch
+}
+
 interface IncorpMarker {
   hour: number
   label: string
   color: string
+  hideLabel?: boolean
 }
 
 interface DetailChartProps {
@@ -90,40 +148,73 @@ interface DetailChartProps {
   formData: FormData
 }
 
-function parseIncorpHour(label: string): number | null {
-  const m = label.match(/(\d+(?:\.\d+)?)\s*h/i)
-  return m ? parseFloat(m[1]) : null
-}
-
-function parseAppHour(label: string): number | null {
-  const m = label.match(/^(\d{1,2}):(\d{2})$/)
-  return m ? parseInt(m[1], 10) : null
-}
-
 function makeTimeIso(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export default function DetailChart({ data, day, formData }: DetailChartProps) {
-  const scenario = data.scenarios.find((s) => s.day === day)
-  const variantLabels = data.variant_labels
-  const isAppTimeVariable = formData.variable === 'app.time'
+  const { t } = useTranslation()
+  const emissionScrollRef = useRef<HTMLDivElement>(null)
+  const weatherScrollRef = useRef<HTMLDivElement>(null)
+  const isSyncingRef = useRef(false)
+  const isTouch = useIsTouch()
+  const tooltipTrigger: 'click' | 'hover' = isTouch ? 'click' : 'hover'
+  const [touchTooltipActive, setTouchTooltipActive] = useState(false)
+  const autoDismissRef = useRef<ReturnType<typeof setTimeout>>()
+
+  const handleChartClick = (e: any) => {
+    if (!isTouch) return
+    if (e && e.activeTooltipIndex != null) {
+      setTouchTooltipActive(true)
+      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
+      autoDismissRef.current = setTimeout(() => setTouchTooltipActive(false), 4000)
+    } else {
+      setTouchTooltipActive(false)
+      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
+    }
+  }, [])
+
+  const syncScroll = (source: 'emission' | 'weather') => () => {
+    if (isSyncingRef.current) return
+    if (isTouch && touchTooltipActive) {
+      setTouchTooltipActive(false)
+      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
+    }
+    const src = source === 'emission' ? emissionScrollRef.current : weatherScrollRef.current
+    const tgt = source === 'emission' ? weatherScrollRef.current : emissionScrollRef.current
+    if (!src || !tgt) return
+    isSyncingRef.current = true
+    tgt.scrollLeft = src.scrollLeft
+    requestAnimationFrame(() => { isSyncingRef.current = false })
+  }
+
+  const dayData = data.days.find((d) => d.day === day)
+  const variableName = data.variable
+  const values = data.values
+  const valueKeys = values.map((v) => String(v))
+  const isAppTimeVariable = variableName === 'app_time'
 
   const variantOffsets = useMemo(() => {
     if (!isAppTimeVariable) return null
-    const offsets: { label: string; appHour: number; offsetFromEarliest: number }[] = []
+    const offsets: { value: string | number; appHour: number; offsetFromEarliest: number }[] = []
     let earliest = 24
-    for (const label of variantLabels) {
-      const h = parseAppHour(label)
-      if (h !== null && h < earliest) earliest = h
+    for (const v of values) {
+      const h = typeof v === 'number' ? v : parseInt(String(v), 10)
+      if (!isNaN(h) && h < earliest) earliest = h
     }
-    for (const label of variantLabels) {
-      const h = parseAppHour(label)
-      offsets.push({ label, appHour: h ?? 0, offsetFromEarliest: (h ?? 0) - earliest })
+    for (const v of values) {
+      const h = typeof v === 'number' ? v : parseInt(String(v), 10)
+      offsets.push({ value: v, appHour: h, offsetFromEarliest: h - earliest })
     }
     return offsets
-  }, [isAppTimeVariable, variantLabels])
+  }, [isAppTimeVariable, values])
 
   const earliestAppHour = variantOffsets ? Math.min(...variantOffsets.map((v) => v.appHour)) : 0
 
@@ -135,8 +226,8 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   }, [data])
 
   const detailData = useMemo(() => {
-    if (!scenario) return []
-    const startDate = new Date(scenario.start)
+    if (!dayData) return []
+    const startDate = new Date(dayData.start)
     const baseDate = new Date(startDate)
     if (isAppTimeVariable) {
       baseDate.setHours(earliestAppHour, 0, 0, 0)
@@ -145,13 +236,12 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     const ZERO_HOUR = 0.1
     const byKey: Record<string, Record<string, any>> = {}
 
-    for (const label of variantLabels) {
-      const t = scenario.variants[label]
-      if (!t) continue
+    for (const variant of dayData.variants) {
+      const key = String(variant.value)
 
       let offset = 0
       if (isAppTimeVariable && variantOffsets) {
-        const vo = variantOffsets.find((v) => v.label === label)
+        const vo = variantOffsets.find((v) => String(v.value) === key)
         offset = vo ? vo.offsetFromEarliest : 0
       }
 
@@ -165,36 +255,36 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           const w = weatherByTime.get(timeIso)
           byKey[zeroKey] = {
             hour: startHour + ZERO_HOUR,
-            label: isAppTimeVariable ? formatHybridLabel(baseDate, startHour) : formatTimeAxis(0),
+            label: isAppTimeVariable ? formatHybridLabel(t, baseDate, startHour) : formatTimeAxis(t, 0),
             air_temp: w ? +w.air_temp.toFixed(1) : null,
             wind_kmh: w ? +(w.wind_speed * 3.6).toFixed(1) : null,
             rain_rate: w ? +w.rain_rate.toFixed(2) : 0,
           }
         }
-        byKey[zeroKey][label] = 0
+        byKey[zeroKey][key] = 0
       }
 
-      for (const p of t.hourly) {
+      for (const p of variant.hourly) {
         const realHour = p.hour + offset
-        const key = String(realHour)
+        const k = String(realHour)
 
-        if (!byKey[key]) {
-          const tsDate = new Date(baseDate.getTime() + realHour * 3600 * 1000)
+        if (!byKey[k]) {
+          const tsDate = new Date(baseDate.getTime() + (realHour - 1) * 3600 * 1000)
           const timeIso = makeTimeIso(tsDate)
           const w = weatherByTime.get(timeIso)
-          byKey[key] = {
+          byKey[k] = {
             hour: realHour,
-            label: isAppTimeVariable ? formatHybridLabel(baseDate, realHour) : formatTimeAxis(realHour),
+            label: isAppTimeVariable ? formatHybridLabel(t, baseDate, realHour) : formatTimeAxis(t, realHour),
             air_temp: w ? +w.air_temp.toFixed(1) : null,
             wind_kmh: w ? +(w.wind_speed * 3.6).toFixed(1) : null,
             rain_rate: w ? +w.rain_rate.toFixed(2) : 0,
           }
         }
-        byKey[key][label] = +(p.er * 100).toFixed(2)
+        byKey[k][key] = +(p.er * 100).toFixed(2)
       }
     }
     return Object.values(byKey).sort((a, b) => a.hour - b.hour)
-  }, [scenario, variantLabels, weatherByTime, isAppTimeVariable, variantOffsets, earliestAppHour])
+  }, [dayData, weatherByTime, isAppTimeVariable, variantOffsets, earliestAppHour, t])
 
   const maxHour = useMemo(() => {
     if (!detailData.length) return 168
@@ -204,47 +294,82 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   const detailMax = useMemo(() => {
     let m = 0
     for (const row of detailData as any[]) {
-      for (const label of variantLabels) {
-        const v = (row[label] ?? 0) as number
+      for (const k of valueKeys) {
+        const v = (row[k] ?? 0) as number
         if (v > m) m = v
       }
     }
     return niceMax(m)
-  }, [detailData, variantLabels])
+  }, [detailData, valueKeys])
+
+  const weatherLeftMax = useMemo(() => {
+    let m = 0
+    for (const row of detailData as any[]) {
+      const t1 = (row.air_temp ?? 0) as number
+      const w1 = (row.wind_kmh ?? 0) as number
+      if (t1 > m) m = t1
+      if (w1 > m) m = w1
+    }
+    return niceMax(m)
+  }, [detailData])
+
+  const weatherRightMax = useMemo(() => {
+    let m = 0
+    for (const row of detailData as any[]) {
+      const r = (row.rain_rate ?? 0) as number
+      if (r > m) m = r
+    }
+    return niceMax(Math.max(m, 1))
+  }, [detailData])
 
   const incorpMarkers: IncorpMarker[] = useMemo(() => {
-    if (formData.incorp === 'none') return []
+    if (formData.incorpDepth === 'none') return []
     if (!detailData.length) return []
 
-    if (formData.variable === 'incorp') {
+    if (variableName === 'incorp_time') {
       const markers: IncorpMarker[] = []
-      for (let i = 0; i < variantLabels.length; i++) {
-        const hour = parseIncorpHour(variantLabels[i])
-        if (hour == null) continue
-        let xHour = hour
+      values.forEach((value, i) => {
+        const hour = typeof value === 'number' ? value : parseFloat(String(value))
+        if (isNaN(hour) || hour < 0) return
+        let xHour = hour === 0 ? 1 : hour
         if (isAppTimeVariable && variantOffsets) {
-          xHour = hour + variantOffsets[i].offsetFromEarliest
+          xHour = (hour === 0 ? 1 : hour) + variantOffsets[i].offsetFromEarliest
         }
         markers.push({
           hour: xHour,
-          label: variantLabels[i],
+          label: variantLabel(t, variableName, value),
           color: VARIANT_COLORS[i % VARIANT_COLORS.length],
         })
-      }
+      })
       return markers
     }
 
     const targetHour = formData.incorpTime
+    if (targetHour < 0) return []
+    const markerHour = targetHour === 0 ? 1 : targetHour
+
+    if (isAppTimeVariable && variantOffsets) {
+      return values.map((value, i) => {
+        const offset = variantOffsets[i].offsetFromEarliest
+        return {
+          hour: markerHour + offset,
+          label: `${variantLabel(t, 'app_time', value)} — ${t('detail.incorp_marker', { depth: t(`variants.incorp_depth.${formData.incorpDepth}`), hours: formData.incorpTime })}`,
+          color: VARIANT_COLORS[i % VARIANT_COLORS.length],
+          hideLabel: true,
+        }
+      })
+    }
+
     const closest = (detailData as any[]).reduce((prev: any, curr: any) =>
-      Math.abs(curr.hour - targetHour) < Math.abs(prev.hour - targetHour) ? curr : prev,
+      Math.abs(curr.hour - markerHour) < Math.abs(prev.hour - markerHour) ? curr : prev,
     )
     if (!closest) return []
     return [{
       hour: closest.hour,
-      label: `Incorp (${formData.incorp}, ${formData.incorpTime}h)`,
+      label: t('detail.incorp_marker', { depth: t(`variants.incorp_depth.${formData.incorpDepth}`), hours: formData.incorpTime }),
       color: '#fbbf24',
     }]
-  }, [detailData, formData.incorp, formData.incorpTime, formData.variable, variantLabels, isAppTimeVariable, variantOffsets])
+  }, [detailData, formData.incorpDepth, formData.incorpTime, variableName, values, isAppTimeVariable, variantOffsets, t])
 
   const logTicks = useMemo(() => {
     const ticks = [1, 2, 4, 8, 24, 48, 96, 168]
@@ -254,201 +379,309 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
 
   const fmtLabel = useMemo(() => {
     if (!isAppTimeVariable) {
-      return (l: any) => typeof l === 'number' ? formatTimeAxis(l) : String(l)
+      return (l: any) => typeof l === 'number' ? formatTimeAxis(t, l) : String(l)
     }
-    const baseDate = scenario ? new Date(scenario.start) : new Date()
+    const baseDate = dayData ? new Date(dayData.start) : new Date()
     baseDate.setHours(earliestAppHour, 0, 0, 0)
     return (l: any) => {
       if (typeof l !== 'number') return String(l)
-      return formatHybridLabel(baseDate, l)
+      return formatHybridLabel(t, baseDate, l)
     }
-  }, [isAppTimeVariable, scenario, earliestAppHour])
+  }, [isAppTimeVariable, dayData, earliestAppHour, t])
 
-  if (!scenario) return null
+  if (!dayData) return null
 
   return (
     <>
+      {/* Fixed legend for emission chart */}
+      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-300 mb-1 shrink-0">
+        {values.map((value, i) => (
+          <span key={String(value)} className="inline-flex items-center gap-1">
+            <span
+              className="inline-block w-3 h-0.5"
+              style={{ backgroundColor: VARIANT_COLORS[i % VARIANT_COLORS.length] }}
+            />
+            {variantLabel(t, variableName, value)}
+          </span>
+        ))}
+      </div>
+
+      {/* === EMISSION CHART === */}
       <div className="flex-[3] min-h-0 flex">
-        <div className="flex items-center justify-center w-5 shrink-0">
-          <span className="text-[10px] text-slate-400 writing-mode-vertical" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-            NH3 loss (% of TAN)
-          </span>
+        <div className="flex shrink-0 h-full">
+          <div className="flex items-center justify-center w-3">
+            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+              {t('charts.nh3_loss_pct')}
+            </span>
+          </div>
+          <div style={{ width: 30 }} className="h-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={detailData}
+                margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
+              >
+                <YAxis
+                  key={`detail-left-${detailMax}`}
+                  yAxisId="left"
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 9 }}
+                  domain={[0, detailMax]}
+                  width={30}
+                />
+                <XAxis dataKey="hour" hide />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={detailData}
-              margin={{ top: 10, right: 10, left: 0, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-              <XAxis
-                dataKey="hour"
-                type="number"
-                scale="log"
-                domain={[1, maxHour]}
-                ticks={logTicks}
-                tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(h)}
-                stroke="#94a3b8"
-                tick={{ fontSize: 10 }}
-              />
-              <YAxis
-                key={`detail-left-${detailMax}`}
-                yAxisId="left"
-                stroke="#94a3b8"
-                tick={{ fontSize: 10 }}
-                domain={[0, detailMax]}
-              />
-              <YAxis
-                key={`detail-right-${detailMax}-${formData.tanApp}`}
-                yAxisId="right"
-                orientation="right"
-                stroke="#94a3b8"
-                tick={{ fontSize: 10 }}
-                domain={[0, detailMax]}
-                tickFormatter={(v: number) =>
-                  ((v * formData.tanApp) / 100).toFixed(1)
-                }
-              />
-              <Tooltip
-                content={
-                  <EmissionTooltip
-                    tanApp={formData.tanApp}
-                    labelFormatter={fmtLabel}
-                    variantLabels={variantLabels}
+
+        <div ref={emissionScrollRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
+          <div className="h-full min-w-[400px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={detailData}
+                margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
+                syncId="detail-charts"
+                onClick={isTouch ? handleChartClick : undefined}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
+                <XAxis
+                  dataKey="hour"
+                  type="number"
+                  scale="log"
+                  domain={[1, maxHour]}
+                  ticks={logTicks}
+                  tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(t, h)}
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 10 }}
+                />
+                <YAxis yAxisId="left" domain={[0, detailMax]} hide />
+                <YAxis yAxisId="right" orientation="right" domain={[0, detailMax]} hide />
+                <Tooltip
+                  trigger={tooltipTrigger}
+                  cursor={isTouch ? (touchTooltipActive ? { fill: 'rgba(148, 163, 184, 0.1)' } : false) : { fill: 'rgba(148, 163, 184, 0.1)' }}
+                  wrapperStyle={isTouch && !touchTooltipActive ? { visibility: 'hidden' } : undefined}
+                  content={
+                    <EmissionTooltip
+                      tanApp={formData.tanApp}
+                      labelFormatter={fmtLabel}
+                      valueKeys={valueKeys}
+                      forceHide={isTouch && !touchTooltipActive}
+                      unit={t('units.kg_per_ha')}
+                    />
+                  }
+                />
+                {values.map((value, i) => (
+                  <Line
+                    key={String(value)}
+                    type="monotone"
+                    dataKey={String(value)}
+                    name={variantLabel(t, variableName, value)}
+                    yAxisId="left"
+                    stroke={VARIANT_COLORS[i % VARIANT_COLORS.length]}
+                    dot={false}
+                    strokeWidth={2}
+                    connectNulls
+                    activeDot={isTouch ? (touchTooltipActive ? { r: 4, strokeWidth: 0 } : false) : undefined}
                   />
-                }
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              {variantLabels.map((label, i) => (
-                <Line
-                  key={label}
-                  type="monotone"
-                  dataKey={label}
-                  yAxisId="left"
-                  stroke={VARIANT_COLORS[i % VARIANT_COLORS.length]}
-                  dot={false}
-                  strokeWidth={2}
-                  connectNulls
-                />
-              ))}
-              {incorpMarkers.map((m) => (
-                <ReferenceLine
-                  key={m.label}
-                  yAxisId="left"
-                  x={m.hour}
-                  stroke={m.color}
-                  strokeDasharray="4 2"
-                  strokeWidth={2}
-                  label={{
-                    value: m.label,
-                    position: 'insideTopRight',
-                    fill: m.color,
-                    fontSize: 10,
-                  }}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+                ))}
+                {incorpMarkers.map((m) => (
+                  <ReferenceLine
+                    key={m.hour + '-' + m.color}
+                    yAxisId="left"
+                    x={m.hour}
+                    stroke={m.color}
+                    strokeDasharray="4 2"
+                    strokeWidth={2}
+                    label={m.hideLabel ? undefined : {
+                      value: m.label,
+                      position: 'insideTopRight',
+                      fill: m.color,
+                      fontSize: 10,
+                    }}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-        <div className="flex items-center justify-center w-5 shrink-0">
-          <span className="text-[10px] text-slate-400" style={{ writingMode: 'vertical-rl' }}>
-            NH3 loss (kg/ha)
-          </span>
+
+        <div className="flex shrink-0 h-full">
+          <div style={{ width: 30 }} className="h-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={detailData}
+                margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
+              >
+                <YAxis
+                  key={`detail-right-${detailMax}-${formData.tanApp}`}
+                  yAxisId="right"
+                  orientation="right"
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 9 }}
+                  domain={[0, detailMax]}
+                  tickFormatter={(v: number) =>
+                    ((v * formData.tanApp) / 100).toFixed(1)
+                  }
+                  width={30}
+                />
+                <XAxis dataKey="hour" hide />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex items-center justify-center w-3">
+            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+              {t('charts.nh3_loss_kgha')}
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="flex-[2] min-h-0 mt-2 flex">
-        <div className="flex items-center justify-center w-5 shrink-0">
-          <span className="text-[10px] text-slate-400" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-            Temp (°C) / Wind (km/h)
-          </span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart
-              data={detailData}
-              margin={{ top: 5, right: 0, left: 0, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-              <XAxis
-                dataKey="hour"
-                type="number"
-                scale="log"
-                domain={[1, maxHour]}
-                ticks={logTicks}
-                tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(h)}
-                stroke="#94a3b8"
-                tick={{ fontSize: 10 }}
-              />
-              <YAxis
-                yAxisId="left"
-                stroke="#94a3b8"
-                tick={{ fontSize: 10 }}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                stroke="#94a3b8"
-                tick={{ fontSize: 10 }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #475569',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#e2e8f0' }}
-                labelFormatter={fmtLabel}
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line
-                yAxisId="right"
-                type="monotone"
-                dataKey="rain_rate"
-                name="Rain (mm/h)"
-                stroke="#3b82f6"
-                dot={false}
-                strokeWidth={2}
-              />
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="air_temp"
-                name="Air temp (°C)"
-                stroke="#f97316"
-                dot={false}
-                strokeWidth={2}
-              />
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="wind_kmh"
-                name="Wind (km/h)"
-                stroke="#22d3ee"
-                dot={false}
-                strokeWidth={2}
-              />
-              {incorpMarkers.map((m) => (
-                <ReferenceLine
-                  key={m.label}
+      {/* Weather legend */}
+      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-300 mt-2 mb-1 shrink-0">
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#f97316' }} />
+          {t('charts.air_temp')}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#22d3ee' }} />
+          {t('charts.wind')}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#3b82f6' }} />
+          {t('charts.rain')}
+        </span>
+      </div>
+
+      {/* === WEATHER CHART === */}
+      <div className="flex-[2] min-h-0 flex">
+        <div className="flex shrink-0 h-full">
+          <div className="flex items-center justify-center w-3">
+            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+              {t('charts.temp_wind_short')}
+            </span>
+          </div>
+          <div style={{ width: 30 }} className="h-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={detailData}
+                margin={{ top: 5, right: 0, left: 0, bottom: 30 }}
+              >
+                <YAxis
+                  key={`weather-left-${weatherLeftMax}`}
                   yAxisId="left"
-                  x={m.hour}
-                  stroke={m.color}
-                  strokeDasharray="4 2"
-                  strokeWidth={2}
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 9 }}
+                  domain={[0, weatherLeftMax]}
+                  width={30}
                 />
-              ))}
-            </ComposedChart>
-          </ResponsiveContainer>
+                <XAxis dataKey="hour" hide />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-        <div className="flex items-center justify-center w-5 shrink-0">
-          <span className="text-[10px] text-slate-400" style={{ writingMode: 'vertical-rl' }}>
-            Rain (mm/h)
-          </span>
+
+        <div ref={weatherScrollRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
+          <div className="h-full min-w-[400px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={detailData}
+                margin={{ top: 5, right: 0, left: 0, bottom: 5 }}
+                syncId="detail-charts"
+                onClick={isTouch ? handleChartClick : undefined}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
+                <XAxis
+                  dataKey="hour"
+                  type="number"
+                  scale="log"
+                  domain={[1, maxHour]}
+                  ticks={logTicks}
+                  tickFormatter={isAppTimeVariable ? fmtLabel : (h: number) => formatTimeAxis(t, h)}
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 10 }}
+                />
+                <YAxis yAxisId="left" domain={[0, weatherLeftMax]} hide />
+                <YAxis yAxisId="right" orientation="right" domain={[0, weatherRightMax]} hide />
+                <Tooltip
+                  trigger={tooltipTrigger}
+                  cursor={isTouch ? (touchTooltipActive ? { fill: 'rgba(148, 163, 184, 0.1)' } : false) : { fill: 'rgba(148, 163, 184, 0.1)' }}
+                  wrapperStyle={isTouch && !touchTooltipActive ? { visibility: 'hidden' } : undefined}
+                  content={<WeatherTooltip labelFormatter={fmtLabel} forceHide={isTouch && !touchTooltipActive} />}
+                />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="rain_rate"
+                  name={t('charts.rain')}
+                  stroke="#3b82f6"
+                  dot={false}
+                  strokeWidth={2}
+                  activeDot={isTouch ? (touchTooltipActive ? { r: 4, strokeWidth: 0 } : false) : undefined}
+                />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="air_temp"
+                  name={t('charts.air_temp')}
+                  stroke="#f97316"
+                  dot={false}
+                  strokeWidth={2}
+                  activeDot={isTouch ? (touchTooltipActive ? { r: 4, strokeWidth: 0 } : false) : undefined}
+                />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="wind_kmh"
+                  name={t('charts.wind')}
+                  stroke="#22d3ee"
+                  dot={false}
+                  strokeWidth={2}
+                  activeDot={isTouch ? (touchTooltipActive ? { r: 4, strokeWidth: 0 } : false) : undefined}
+                />
+                {incorpMarkers.map((m) => (
+                  <ReferenceLine
+                    key={m.hour + '-' + m.color}
+                    yAxisId="left"
+                    x={m.hour}
+                    stroke={m.color}
+                    strokeDasharray="4 2"
+                    strokeWidth={2}
+                  />
+                ))}
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 h-full">
+          <div style={{ width: 30 }} className="h-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={detailData}
+                margin={{ top: 5, right: 0, left: 0, bottom: 30 }}
+              >
+                <YAxis
+                  key={`weather-right-${weatherRightMax}`}
+                  yAxisId="right"
+                  orientation="right"
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 9 }}
+                  domain={[0, weatherRightMax]}
+                  width={30}
+                />
+                <XAxis dataKey="hour" hide />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex items-center justify-center w-3">
+            <span className="text-[9px] text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+              {t('charts.rain_short')}
+            </span>
+          </div>
         </div>
       </div>
       <p className="text-[10px] text-slate-500 mt-1">
-        Weather data by{' '}
+        {t('calculation.weather_by')}{' '}
         <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-400">
           Open-Meteo.com
         </a>
@@ -457,13 +690,19 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   )
 }
 
-function formatHybridLabel(baseDate: Date, hoursSinceBase: number): string {
+function formatTimeAxis(t: any, hour: number): string {
+  const days = Math.floor(hour / 24)
+  const hours = hour % 24
+  if (days === 0) return t('time.hours_short', { n: hours })
+  if (hours === 0) return t('time.days_short', { n: days })
+  return t('time.days_hours', { d: days, h: hours })
+}
+
+function formatHybridLabel(t: any, baseDate: Date, hoursSinceBase: number): string {
   const d = new Date(baseDate.getTime() + hoursSinceBase * 3600 * 1000)
   const pad = (n: number) => String(n).padStart(2, '0')
   const clock = `${pad(d.getHours())}:${pad(d.getMinutes())}`
   const daysSince = Math.floor(hoursSinceBase / 24)
-  if (daysSince === 0) return `${clock} (+${hoursSinceBase}h)`
-  const remaining = hoursSinceBase % 24
-  if (remaining === 0) return `Day ${daysSince}, ${clock} (+${hoursSinceBase}h)`
-  return `Day ${daysSince}, ${clock} (+${hoursSinceBase}h)`
+  if (daysSince === 0) return t('time.clock_offset', { clock, h: hoursSinceBase })
+  return t('time.day_clock', { day: daysSince, clock, h: hoursSinceBase })
 }

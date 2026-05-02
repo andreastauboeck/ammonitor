@@ -3,19 +3,20 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import time
 import urllib.parse
 import urllib.request
 from threading import Lock
 
 # How many days of hourly forecast we need:
-# For 7 scenarios (day 0..6) each spanning 7 days (168 h), and an application
-# hour up to 23, we need at most 6*24 + 23 + 168 = 335 hours. Fetch 14 days
-# (336 hours) to cover this with a small buffer.
-FORECAST_DAYS = 14
-HOURS_NEEDED = 6 * 24 + 23 + 168  # 335
+# For 8 days (day 0..7) each spanning 7 days (168 h), and an application
+# hour up to 23, we need at most 7*24 + 23 + 168 = 359 hours. Fetch 15 days
+# (360 hours) to cover this.
+FORECAST_DAYS = 15
+HOURS_NEEDED = 7 * 24 + 23 + 168  # 359
 
-# Cache TTL in seconds (10 minutes)
+# Cache TTL in seconds (30 minutes)
 CACHE_TTL = 1800
 
 # Rounding precision for the cache key to group nearby coordinates
@@ -23,6 +24,21 @@ COORD_PRECISION = 2  # ~1.1 km
 
 _cache: dict[tuple, tuple[float, dict]] = {}
 _cache_lock = Lock()
+
+_SWEEP_INTERVAL = 300  # seconds between cache sweeps
+
+
+def _sweep_cache() -> None:
+    while True:
+        time.sleep(_SWEEP_INTERVAL)
+        now = time.time()
+        with _cache_lock:
+            expired = [k for k, (ts, _) in _cache.items() if now - ts >= CACHE_TTL]
+            for k in expired:
+                del _cache[k]
+
+
+threading.Thread(target=_sweep_cache, daemon=True, name="weather-cache-sweeper").start()
 
 
 def fetch_weather(lat: float, lng: float, timezone_name: str = "auto") -> dict:
@@ -70,7 +86,7 @@ def _fetch_from_open_meteo(lat: float, lng: float, timezone_name: str) -> dict:
     }
     url = "https://api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(params)
 
-    req = urllib.request.Request(url, headers={"User-Agent": "ammonitor/0.1"})
+    req = urllib.request.Request(url, headers={"User-Agent": "ammonitor/0.2"})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             body = resp.read().decode("utf-8")
@@ -82,6 +98,10 @@ def _fetch_from_open_meteo(lat: float, lng: float, timezone_name: str) -> dict:
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Invalid JSON from Open-Meteo: {e}") from e
 
+    return _parse_om_response(payload)
+
+
+def _parse_om_response(payload: dict) -> dict:
     hourly = payload.get("hourly") or {}
     times = hourly.get("time") or []
     temps = hourly.get("temperature_2m") or []
@@ -96,13 +116,22 @@ def _fetch_from_open_meteo(lat: float, lng: float, timezone_name: str) -> dict:
 
     out_hourly = []
     for i in range(min(len(times), FORECAST_DAYS * 24)):
-        t = times[i]
+        temp = temps[i] if i < len(temps) else None
+        wind = winds[i] if i < len(winds) else None
+        rain = rains[i] if i < len(rains) else None
+
+        if temp is None or wind is None or rain is None:
+            raise RuntimeError(
+                f"Open-Meteo returned incomplete data at hour {i} "
+                f"(temp={temp}, wind={wind}, rain={rain})"
+            )
+
         out_hourly.append(
             {
-                "time_iso": t,
-                "air_temp": _safe_num(temps[i] if i < len(temps) else None, 15.0),
-                "wind_speed": _safe_num(winds[i] if i < len(winds) else None, 2.7),
-                "rain_rate": _safe_num(rains[i] if i < len(rains) else None, 0.0),
+                "time_iso": times[i],
+                "air_temp": _safe_num(temp),
+                "wind_speed": _safe_num(wind),
+                "rain_rate": _safe_num(rain),
             }
         )
 
@@ -111,13 +140,13 @@ def _fetch_from_open_meteo(lat: float, lng: float, timezone_name: str) -> dict:
     }
 
 
-def _safe_num(v, default: float) -> float:
+def _safe_num(v) -> float:
     try:
         if v is None:
-            return default
+            raise ValueError("Missing value")
         f = float(v)
         if math.isnan(f) or math.isinf(f):
-            return default
+            raise ValueError(f"Invalid number: {v}")
         return f
-    except (ValueError, TypeError):
-        return default
+    except (ValueError, TypeError) as e:
+        raise RuntimeError(f"Invalid weather value: {v}") from e

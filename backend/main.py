@@ -33,52 +33,92 @@ app.add_middleware(
 )
 
 VariableName = Literal[
-    "app.mthd", "app.time", "man.dm", "man.ph", "incorp", "incorp.depth", "man.source"
+    "app_mthd",
+    "app_time",
+    "man_dm",
+    "man_ph",
+    "incorp_depth",
+    "incorp_time",
+    "man_source",
 ]
 
+ManureSource = Literal["cattle", "pig"]
+IncorpDepth = Literal["none", "shallow", "deep"]
+AppMethod = Literal["bc", "th", "ts", "os", "cs"]
 
-class VariantDef(BaseModel):
-    value: Any
-    label: str
+# Canonical allowed values per variable. Single source of truth used to
+# validate incoming `values` lists.
+VARIANT_VALUES: dict[str, list[Any]] = {
+    "app_mthd": ["bc", "th", "ts", "os", "cs"],
+    "app_time": [6, 8, 12, 16, 20],
+    "man_dm": [2, 4, 6, 10, 14],
+    "man_ph": [5.5, 6.5, 7.5, 8.0, 9.0],
+    "man_source": ["cattle", "pig"],
+    "incorp_depth": ["none", "shallow", "deep"],
+    "incorp_time": [0, 2, 4, 8, 12, 24],
+}
 
 
 CALCULATE_EXAMPLE = {
     "lat": 48.23,
     "lng": 14.70,
-    "variable": "app.mthd",
-    "variants": [
-        {"value": "bc", "label": "Broadcast"},
-        {"value": "th", "label": "Trailing hose"},
-        {"value": "ts", "label": "Trailing shoe"},
-        {"value": "os", "label": "Open slot"},
-        {"value": "cs", "label": "Closed slot"},
-    ],
+    "variable": "app_mthd",
+    "values": ["bc", "th", "ts", "os", "cs"],
     "app_mthd": "th",
+    "app_time": 12,
     "man_dm": 6.0,
     "man_ph": 7.5,
     "man_source": "cattle",
-    "application_time": "12:00",
-    "incorp": "none",
+    "incorp_depth": "none",
     "incorp_time": 4,
     "timezone": "Europe/Vienna",
 }
 
 
 class CalculateInput(BaseModel):
-    lat: float
-    lng: float
-    variable: VariableName = "app.mthd"
-    variants: list[VariantDef] = Field(
-        ..., description="Variant definitions from frontend"
+    """Request body for the /api/calculate endpoint.
+
+    Run the ALFAM2 ammonia loss model over 8 consecutive days for one
+    variable parameter, comparing all `values` against the same fixed
+    parameter set. Each variant is simulated for 168 hours starting at the
+    given application time on each day.
+    """
+    lat: float = Field(..., ge=-90, le=90, description="Latitude (WGS84)")
+    lng: float = Field(..., ge=-180, le=180, description="Longitude (WGS84)")
+    variable: VariableName = Field(
+        "app_mthd",
+        description="Which parameter to vary across runs"
     )
-    app_mthd: str = Field("th", description="Application method (when not the variable)")
-    man_dm: float = Field(6.0, description="Manure dry matter (%)")
-    man_ph: float = Field(7.5, description="Manure pH")
-    man_source: str = Field("cattle", description="Manure source")
-    application_time: str = Field("12:00", description="Application time (HH:MM)")
-    incorp: str = Field("none", description="Incorporation depth")
-    incorp_time: float = Field(1.0, description="Incorporation time (hours)")
-    timezone: str = Field("auto", description="IANA timezone name for weather")
+    values: list[Any] = Field(
+        ...,
+        description="Variant values to compare. Must be a subset of the "
+                    "allowed values for the given variable."
+    )
+    app_mthd: AppMethod = Field(
+        "th", description="Application method when variable != 'app_mthd'"
+    )
+    app_time: int = Field(
+        12, ge=0, le=23,
+        description="Application time as hour of day (0-23)"
+    )
+    man_dm: float = Field(
+        6.0, ge=1.0, le=15.0, description="Manure dry matter (% w/w)"
+    )
+    man_ph: float = Field(
+        7.5, ge=5.5, le=9.0, description="Manure pH"
+    )
+    man_source: ManureSource = Field(
+        "cattle", description="Manure source"
+    )
+    incorp_depth: IncorpDepth = Field(
+        "none", description="Incorporation depth"
+    )
+    incorp_time: float = Field(
+        0.0, ge=0.0, description="Incorporation time (hours after application)"
+    )
+    timezone: str = Field(
+        "auto", description="IANA timezone for weather forecast"
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -89,6 +129,7 @@ class CalculateInput(BaseModel):
 
 @app.get("/api/status")
 def get_status() -> dict[str, str]:
+    """Return backend health, version and environment."""
     return {
         "status": "ok",
         "version": VERSION,
@@ -107,52 +148,71 @@ def get_status() -> dict[str, str]:
         }
     })
 def calculate(input_data: CalculateInput) -> dict:
+    """Run ALFAM2 emission prediction for all variants across 8 days.
+
+    Returns hourly emission ratios (er) and per-day final loss percentages
+    for each variant value, plus the hourly weather used for the simulation.
+    """
     variable = input_data.variable
 
-    if variable == "incorp" and input_data.incorp == "none":
+    if variable == "incorp_time" and input_data.incorp_depth == "none":
         raise HTTPException(
             status_code=422,
             detail="Cannot vary incorporation time when incorporation depth is 'none'",
         )
 
+    allowed = VARIANT_VALUES.get(variable, [])
+    invalid = [v for v in input_data.values if v not in allowed]
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid values for variable '{variable}': {invalid}. "
+                   f"Allowed: {allowed}",
+        )
+
+    if not input_data.values:
+        raise HTTPException(
+            status_code=422,
+            detail="`values` must not be empty",
+        )
+
     try:
         weather = fetch_weather(input_data.lat, input_data.lng, input_data.timezone)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Weather fetch failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Weather fetch failed: {e}") from e
 
     first_hour_iso = weather["hourly"][0]["time_iso"]
     first_date = datetime.fromisoformat(first_hour_iso).date()
 
-    app_hour_str = input_data.application_time.split(":")[0]
-    app_hour = int(app_hour_str)
-
     daily_starts = [
         datetime.combine(
-            first_date + timedelta(days=i), dt_time(hour=app_hour)
+            first_date + timedelta(days=i),
+            dt_time(hour=input_data.app_time),
         ).isoformat(timespec="minutes")
-        for i in range(7)
+        for i in range(8)
     ]
 
-    variant_tuples = [(v.value, v.label) for v in input_data.variants]
-
-    result = run_alfam2(
-        variable=variable,
-        variants=variant_tuples,
-        app_mthd=input_data.app_mthd,
-        man_dm=input_data.man_dm,
-        man_ph=input_data.man_ph,
-        man_source=input_data.man_source,
-        application_hour=app_hour,
-        incorp=input_data.incorp,
-        incorp_time=input_data.incorp_time,
-        weather_hourly=weather["hourly"],
-        start_dates_iso=daily_starts,
-    )
+    try:
+        result = run_alfam2(
+            variable=variable,
+            values=input_data.values,
+            app_mthd=input_data.app_mthd,
+            man_dm=input_data.man_dm,
+            man_ph=input_data.man_ph,
+            man_source=input_data.man_source,
+            application_hour=input_data.app_time,
+            incorp_depth=input_data.incorp_depth,
+            incorp_time=input_data.incorp_time,
+            weather_hourly=weather["hourly"],
+            start_dates_iso=daily_starts,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ALFAM2 model error: {e}") from e
 
     return {
         "variable": variable,
-        "variant_labels": result["variant_labels"],
-        "scenarios": result["scenarios"],
+        "values": input_data.values,
+        "days": result["days"],
         "weather": weather["hourly"],
     }
 
@@ -165,12 +225,14 @@ if _FRONTEND_DIST.is_dir():
     if _ASSETS_DIR.is_dir():
         app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
 
-    @app.get("/")
+    @app.get("/", include_in_schema=False)
     def serve_index() -> FileResponse:
+        """Serve the SPA entry point."""
         return FileResponse(_FRONTEND_DIST / "index.html")
 
-    @app.get("/{full_path:path}")
+    @app.get("/{full_path:path}", include_in_schema=False)
     def serve_spa(full_path: str) -> FileResponse:
+        """Serve a static asset or fall back to the SPA entry point."""
         candidate = _FRONTEND_DIST / full_path
         if candidate.is_file():
             return FileResponse(candidate)

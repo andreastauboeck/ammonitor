@@ -1,10 +1,10 @@
 #!/usr/bin/env Rscript
 
 # ALFAM2 Model Runner
-# Runs the ALFAM2 model for multiple scenarios (grouped) with time series inputs.
-# Input: CSV file with columns: scenario, ct, TAN.app, man.dm, man.ph, man.source,
+# Runs the ALFAM2 model for multiple variants (grouped) with time series inputs.
+# Input: CSV file with columns: day_variant, ct, TAN.app, man.dm, man.ph, man.source,
 #        app.mthd, incorp, t.incorp, app.rate, air.temp, wind.sqrt, rain.rate
-# Output: CSV file with columns: scenario, ct, e, er, j, jinst
+# Output: CSV file with columns: day_variant, ct, e, er, j, jinst
 
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -34,13 +34,13 @@ tryCatch({
     app.name = "TAN.app",
     time.name = "ct",
     time.incorp = time_incorp_arg,
-    group = "scenario",
+    group = "day_variant",
     warn = FALSE,
     check = TRUE
   )
 
   # Keep only relevant columns
-  keep_cols <- intersect(c("scenario", "ct", "e", "er", "j", "jinst"), names(pred))
+  keep_cols <- intersect(c("day_variant", "ct", "e", "er", "j", "jinst"), names(pred))
   out <- pred[, keep_cols]
 
   write.csv(out, output_file, row.names = FALSE)

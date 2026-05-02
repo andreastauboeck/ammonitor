@@ -2,11 +2,11 @@
 
 ## Project Overview
 
-Ammonia (NH3) emission prediction and monitoring decision-support tool for agriculture. Uses the ALFAM2 model (R package) driven by weather forecasts (Open-Meteo) to predict NH3 loss from manure application across 7-day scenarios, comparing variants of application parameters.
+Ammonia (NH3) emission prediction and monitoring decision-support tool for agriculture. Uses the ALFAM2 model (R package) driven by weather forecasts (Open-Meteo) to predict NH3 loss from manure application across 8 days, comparing variants of application parameters.
 
-**Version:** See `VERSION` file at repo root (currently `0.2.0`)
+**Version:** See `VERSION` file at repo root (currently `0.3.0`)
 
-**Tech stack:** Python 3 / FastAPI / R (ALFAM2) / React 18 / TypeScript / Tailwind CSS / Recharts / Leaflet / Docker / Fly.io
+**Tech stack:** Python 3 / FastAPI / R (ALFAM2) / React 18 / TypeScript / Tailwind CSS / Recharts / Leaflet / i18next / Docker / Fly.io
 
 ---
 
@@ -24,23 +24,24 @@ Calculation.tsx:
   4. POST /api/calculate → backend
 
 Backend main.py /api/calculate:
-  1. Validates input (e.g. incorp="none" + variable="incorp" → 422)
+  1. Validates input (e.g. incorp_depth="none" + variable="incorp_time" → 422)
+     also validates `values` against canonical VARIANT_VALUES[variable]
   2. fetch_weather(lat, lng, timezone) → Open-Meteo (cached 10 min)
-  3. Computes 7 daily start datetimes
+  3. Computes 8 daily start datetimes
   4. Calls run_alfam2(...)
 
 run_alfam2.py:
-  1. Builds input CSV: 7 days × N variants × 168 hours per row
+  1. Builds input CSV: 8 days × N values × 168 hours per row
   2. Calls Rscript run_alfam2.R <input.csv> <output.csv>
   3. run_alfam2.R calls ALFAM2::alfam2()
-  4. Parses output CSV into {variant_labels, scenarios[{day, start, variants[{final_loss_pct, hourly}]}]}
+  4. Parses output CSV into {days: [{day, start, variants: [{value, final_loss_pct, hourly}]}]}
 
 Backend returns:
-  { variable, variant_labels, scenarios, weather }
+  { variable, values, days, weather }
 
 Frontend renders:
-  - No day selected → OverviewChart (grouped bars: final_loss_pct per variant per day)
-  - Day selected → DetailChart (lines: hourly er over 168h, + weather sub-chart)
+  - No day selected → OverviewChart (grouped bars: final_loss_pct per value per day + daily weather chart with min/max bands)
+  - Day selected → DetailChart (lines: hourly er over 168h, + hourly weather sub-chart)
 ```
 
 ---
@@ -50,17 +51,20 @@ Frontend renders:
 | File | Purpose | Key Exports/Functions |
 |------|---------|----------------------|
 | `VERSION` | Single-line version string | Read by CI pipeline for Docker image tagging |
-| `backend/main.py` | FastAPI app: API routes + SPA serving | `app`, `CalculateInput`, `VariantDef` |
+| `backend/main.py` | FastAPI app: API routes + SPA serving | `app`, `CalculateInput`, `VARIANT_VALUES` |
 | `backend/run_alfam2.py` | ALFAM2 R model runner | `run_alfam2()`, `_build_input_rows()`, `_parse_output()` |
 | `backend/run_alfam2.R` | R-side ALFAM2 invocation | Called via `Rscript` |
 | `backend/weather.py` | Open-Meteo forecast fetcher | `fetch_weather()` |
 | `backend/requirements.txt` | Python dependencies | `fastapi`, `uvicorn` |
-| `frontend/src/main.tsx` | React app bootstrap + routes | Routes: `/`, `/calculate/:lat/:lng`, `/calculate/:lat/:lng/:day` |
-| `frontend/src/pages/types.ts` | Shared types, constants, utilities | `VARIANT_DEFS`, `INPUT_LABELS`, `DEFAULT_FORM_DATA`, `VARIANT_COLORS`, `ApiResponse`, `FormData` |
+| `frontend/src/main.tsx` | React app bootstrap + routes + i18n init | Routes: `/`, `/calculate/:lat/:lng`, `/calculate/:lat/:lng/:day` |
+| `frontend/src/i18n/index.ts` | i18next initialization | Detection: localStorage → navigator → en |
+| `frontend/src/i18n/locales/{en,de}.json` | Translation maps | Nested keys: `variables.*`, `variants.*`, `categories.*`, etc. |
+| `frontend/src/components/LanguageSwitcher.tsx` | EN/DE toggle | `i18n.changeLanguage()` |
+| `frontend/src/pages/types.ts` | Shared types, constants, utilities | `VARIANT_DEFS`, `DEFAULT_FORM_DATA`, `VARIANT_COLORS`, `ApiResponse`, `FormData` |
 | `frontend/src/pages/Home.tsx` | Leaflet map location selector | Search + click → navigate to calculation |
 | `frontend/src/pages/Calculation.tsx` | Parameter form + chart orchestration | Form state, API calls, URL param sync |
-| `frontend/src/pages/OverviewChart.tsx` | 7-day grouped bar chart | Click bar → detail view |
-| `frontend/src/pages/DetailChart.tsx` | Hourly line chart + weather | Log-scale x-axis, app.time offset, incorp markers |
+| `frontend/src/pages/OverviewChart.tsx` | 8-day grouped bar chart + weather sub-chart | Click bar → detail view; weather min/max area bands |
+| `frontend/src/pages/DetailChart.tsx` | Hourly line chart + weather | Log-scale x-axis, app_time offset, incorp markers |
 | `Dockerfile` | Multi-stage production build | r-base → frontend-build → runtime |
 | `fly.toml` | Fly.io deployment config | App: ammonitor, region: fra, port: 8000 |
 | `.github/workflows/deploy.yml` | CI/CD: build → push → deploy | VERSION file → Docker tags → Fly.io |
@@ -76,73 +80,77 @@ Frontend renders:
 {
   "lat": 48.23,
   "lng": 14.70,
-  "variable": "app.mthd",
-  "variants": [
-    {"value": "bc", "label": "Broadcast"},
-    {"value": "th", "label": "Trailing hose"},
-    {"value": "ts", "label": "Trailing shoe"},
-    {"value": "os", "label": "Open slot"},
-    {"value": "cs", "label": "Closed slot"}
-  ],
+  "variable": "app_mthd",
+  "values": ["bc", "th", "ts", "os", "cs"],
   "app_mthd": "th",
+  "app_time": 12,
   "man_dm": 6.0,
   "man_ph": 7.5,
   "man_source": "cattle",
-  "application_time": "12:00",
-  "incorp": "none",
+  "incorp_depth": "none",
   "incorp_time": 4,
   "timezone": "Europe/Vienna"
 }
 ```
 
+- `variable`: which parameter to vary. One of: `app_mthd`, `app_time`, `man_dm`, `man_ph`, `man_source`, `incorp_depth`, `incorp_time`
+- `values`: list of variant values. Must be a subset of the canonical set defined per variable in `VARIANT_VALUES` (backend). Display labels are NOT part of the API — translate `values` client-side.
+- `app_time`: integer hour 0–23 (no fractional hours; matches model's hourly weather granularity)
+- `man_source`: `"cattle"` or `"pig"` (Literal-validated)
+- `incorp_depth`: `"none"`, `"shallow"`, or `"deep"` (Literal-validated)
+- `app_mthd` (when not the variable): `"bc"`, `"th"`, `"ts"`, `"os"`, `"cs"` (Literal-validated)
+
 **Response:**
 ```json
 {
-  "variable": "app.mthd",
-  "variant_labels": ["Broadcast", "Trailing hose", "Trailing shoe", "Open slot", "Closed slot"],
-  "scenarios": [
+  "variable": "app_mthd",
+  "values": ["bc", "th", "ts", "os", "cs"],
+  "days": [
     {
       "day": 0,
       "start": "2026-04-28T12:00",
-      "variants": {
-        "Broadcast": {
-          "final_loss_pct": 34.56,
-          "hourly": [{"hour": 1, "er": 0.12}, ...]
-        }
-      }
+      "variants": [
+        {"value": "bc", "final_loss_pct": 53.66, "hourly": [{"hour": 1, "er": 0.12}, ...]},
+        {"value": "th", "final_loss_pct": 32.69, "hourly": [...]},
+        ...
+      ]
     }
   ],
   "weather": [{"time_iso": "2026-04-28T12:00", "air_temp": 12.3, "wind_speed": 3.1, "rain_rate": 0.0}, ...]
 }
 ```
 
+- `days[].variants` is an **ordered array** (matches the request `values` order). Each item has a stable `value` ID, the final percent loss, and the 168-hour `hourly` curve.
+- All variant identifiers are stable (no display strings). Frontend translates them via i18n.
+
 ### `GET /api/status`
 
-Returns `{"status": "ok", "version": "0.2.0", "environment": "production"}`
+Returns `{"status": "ok", "version": "0.3.0", "environment": "production"}`
 
 ---
 
 ## Frontend Conventions
 
-- **VARIANT_DEFS** in `types.ts` is the **canonical source of truth** for variant options. The backend receives them in the API request body — no hardcoded definitions on the backend side.
-- **Color scheme:** 5 fixed colors `[#ef4444, #3b82f6, #8b5cf6, #10b981, #f59e0b]` indexed by variant position.
+- **VARIANT_DEFS** in `types.ts` lists allowed variant values per variable. The backend has the canonical set in `VARIANT_VALUES` (Python). Both must stay in sync.
+- **i18n via i18next:** Display labels are looked up via `t(\`variants.${variable}.${value}\`)`. The API uses stable IDs (`bc`, `cattle`, `none`, etc.) — never display strings.
+- **Detection order:** localStorage → navigator → English fallback. User choice persisted in `localStorage["ammonitor-lang"]`.
+- **Color scheme:** 6 fixed colors `[#ef4444, #3b82f6, #8b5cf6, #10b981, #f59e0b, #ec4899]` indexed by variant position.
 - **URL params:** All form state is serialized to URL search params for shareable URLs. Form deserialization reads them back on page load.
 - **Variable selector:** Radio button column — one variable at a time. The selected variable's dropdown is disabled since it will be varied.
-- **Incorp depth = "none":** Disables incorp time as a variable option. Switching depth to "none" while variable is "incorp" auto-falls back to "app.mthd".
-- **TAN applied:** Free number input, never a variable. er is independent of TAN; kg/ha is computed frontend-side as `er × tanApp / 100`.
-- **app.time detail chart:** When `app.time` is the variable, emission lines start at their actual clock time. X-axis uses hybrid labels (clock + elapsed hours). Weather aligns naturally via real-time lookup. Later-starting variants get a 0% emission start point.
-- **Incorp markers:** When incorp is the variable, each variant gets a dashed reference line at its incorp hour in the matching variant color. When fixed, a single yellow marker appears.
-
----
+- **Incorp depth = "none":** Sets incorp_time = 0. Switching depth to "none" while variable is `incorp_time` or `incorp_depth` auto-falls back to `app_mthd`.
+- **TAN applied:** Dropdown preset, never a variable. `er` is independent of TAN; kg/ha is computed frontend-side as `er × tanApp / 100`.
+- **app_time detail chart:** When `app_time` is the variable, emission lines start at their actual clock time. X-axis uses hybrid labels (clock + elapsed hours). Weather aligns naturally via real-time lookup. Later-starting variants get a 0% emission start point.
+- **Incorp markers:** When `incorp_time` is the variable, each variant gets a dashed reference line at its incorp hour in the matching variant color. When fixed, a single yellow marker appears.
+- **LanguageSwitcher** lives in `components/`, used in Home, Calculation, Imprint, Privacy, Terms.---
 
 ## Backend Conventions
 
-- **ALFAM2 input CSV columns:** `scenario, ct, TAN.app, man.dm, man.ph, man.source, app.mthd, incorp, t.incorp, app.rate, air.temp, wind.sqrt, rain.rate`
-- **ALFAM2 output CSV columns:** `scenario, ct, e, er, j, jinst`
+- **ALFAM2 input CSV columns:** `day_variant, ct, TAN.app, man.dm, man.ph, man.source, app.mthd, incorp, t.incorp, app.rate, air.temp, wind.sqrt, rain.rate`
+- **ALFAM2 output CSV columns:** `day_variant, ct, e, er, j, jinst`
 - **Fixed model parameters:** `TAN.app = 60.0`, `app.rate = 30.0` — hardcoded in `_build_input_rows()`, not configurable from the frontend.
 - **Incorp depth "none":** Means empty `incorp` and `t.incorp` columns in the CSV (NA in R).
 - **wind.sqrt:** Precomputed in Python before sending to R.
-- **Scenario IDs:** Pattern `d{day_idx}_v{var_idx}` (e.g. `d0_v0`, `d2_v4`).
+- **Day/variant IDs (CSV column):** Pattern `d{day_idx}_v{var_idx}` (e.g. `d0_v0`, `d2_v4`). The CSV column is named `day_variant`, used by the R script as the grouping column.
 - **Weather caching:** In-memory cache with 10-min TTL, coordinate keys rounded to 2 decimal places (~1.1 km).
 - **Variant value parsing:** `_parse_app_hour()` handles `"06:00"` → 6, `_parse_float()` ensures numeric types from JSON.
 - **Error strategy:** 422 for validation errors, 502 for weather fetch failures, 500 for R script failures.

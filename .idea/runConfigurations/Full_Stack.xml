@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Full Stack" type="CompoundRunConfigurationType" folderName="ammonitor">
+  <configuration default="false" name="Full Stack" type="CompoundRunConfigurationType">
     <toRun name="Backend" type="PythonConfigurationType" />
     <toRun name="Frontend" type="js.build_tools.npm" />
     <method v="2" />

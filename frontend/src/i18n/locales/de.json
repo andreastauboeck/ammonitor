@@ -1,0 +1,237 @@
+{
+  "common": {
+    "back": "Zurück",
+    "loading": "Lädt...",
+    "error": "Fehler"
+  },
+  "language": {
+    "label": "Sprache",
+    "en": "English",
+    "de": "Deutsch"
+  },
+  "units": {
+    "kg_per_ha": "kg/ha"
+  },
+  "home": {
+    "tagline": "Ammoniak-Verluste vorhersagen. Strategien vergleichen. Klima schützen und mehr ernten.",
+    "subtitle": "Wählen Sie ein Feld auf der Karte oder suchen Sie einen Standort, dann starten Sie eine Berechnung.",
+    "search_placeholder": "Adresse eingeben…",
+    "search_button": "Suchen",
+    "map_data": "Kartendaten",
+    "selected": "ausgewählt",
+    "start_button": "Berechnung starten",
+    "backend": "Backend",
+    "about_title": "Über ammonitor",
+    "about_body": "Ammonitor unterstützt Landwirte und Berater bei fundierten Entscheidungen zur Gülleausbringung. Durch die Kombination aktueller Wettervorhersagen mit dem ALFAM2-Emissionsmodell wird vorhergesagt, wie viel Ammoniak (NH₃) nach der Ausbringung verloren geht — und wie verschiedene Ausbringstrategien über die nächsten 8 Tage abschneiden.",
+    "feature_compare_title": "Strategien vergleichen",
+    "feature_compare_body": "Variieren Sie Ausbringtechnik, Zeitpunkt, Trockensubstanz, pH-Wert und Einarbeitung — sehen Sie, was Verluste minimiert.",
+    "feature_weather_title": "Echte Wetterdaten",
+    "feature_weather_body": "Vorhersagen von Open-Meteo speisen das Modell, sodass Prognosen die tatsächlichen Bedingungen widerspiegeln.",
+    "feature_instant_title": "Sofortige Ergebnisse",
+    "feature_instant_body": "Erhalten Sie ein 8-tägiges Emissionsprofil in Sekunden — ohne Einrichtung, ohne Installation, ohne Kosten.",
+    "alfam2_title": "Angetrieben von ALFAM2",
+    "alfam2_body_pre": "Das",
+    "alfam2_body_post": "-Modell (Hafner et al.) ist ein semi-empirisches Modell zur Vorhersage der Ammoniakverflüchtigung aus feldausgebrachter Gülle, entwickelt aus über 2.000 Messungen in ganz Europa. Wir danken dem ALFAM2-Team, das seine Arbeit offen zugänglich gemacht hat — ohne sie wäre ammonitor nicht möglich.",
+    "info_open_source_title": "Open Source",
+    "info_open_source_body_pre": "Code verfügbar auf",
+    "info_open_source_body_post": "unter AGPL-3.0. Einsehen, forken, mitwirken.",
+    "info_api_title": "Öffentliche API",
+    "info_api_body_pre": "Programmatischer Zugang über",
+    "info_api_link": "Swagger-Dokumentation",
+    "info_api_body_post": ". Integrieren Sie ammonitor in Ihre eigenen Werkzeuge.",
+    "info_free_title": "Für immer kostenlos",
+    "info_free_body": "Kein Konto, kein Abonnement, keine Limits. Ammonitor wird immer kostenlos nutzbar bleiben.",
+    "weather_credit_pre": "Wettervorhersagen bereitgestellt von",
+    "weather_credit_under": "unter",
+    "footer_imprint": "Impressum",
+    "footer_privacy": "Datenschutz",
+    "footer_terms": "Nutzungsbedingungen"
+  },
+  "calculation": {
+    "back_to_map": "Zurück zur Karte",
+    "back_to_overview": "Zurück zur Übersicht",
+    "loading_location": "Standort wird geladen...",
+    "geocoding_by": "Geokodierung durch",
+    "weather_by": "Wetterdaten von",
+    "parameters": "Parameter",
+    "compare": "vergleichen",
+    "compare_hint": "Wählen Sie einen Optionsschalter, um Varianten dieses Parameters zu vergleichen",
+    "tan_applied": "TAN-Gabe",
+    "varied": "variiert",
+    "incorporation": "Einarbeitung",
+    "depth": "Tiefe",
+    "time": "Zeit",
+    "tip_click": "Klicken Sie auf eine Tagesgruppe für stündliche Details.",
+    "tip_tap": "Tippen Sie auf eine Tagesgruppe für stündliche Details.",
+    "overview_title": "Übersicht NH3-Verlust nach {{variable}}",
+    "detail_title": "Detailverluste am {{date}} nach {{variable}}",
+    "calculating": "Berechnung läuft..."
+  },
+  "detail": {
+    "incorp_marker": "Einarb. ({{depth}}, {{hours}} h)"
+  },
+  "variables": {
+    "app_mthd": "Ausbringtechnik",
+    "app_time": "Ausbringzeit",
+    "man_dm": "Trockensubstanz",
+    "man_ph": "pH-Wert",
+    "man_source": "Gülleart",
+    "incorp_depth": "Einarb.-Tiefe",
+    "incorp_time": "Einarb.-Zeit"
+  },
+  "variants": {
+    "app_mthd": {
+      "bc": "Breitverteilung",
+      "th": "Schleppschlauch",
+      "ts": "Schleppschuh",
+      "os": "Offener Schlitz",
+      "cs": "Geschlossener Schlitz"
+    },
+    "app_time": {
+      "6": "06:00",
+      "8": "08:00",
+      "12": "12:00",
+      "16": "16:00",
+      "20": "20:00"
+    },
+    "man_dm": {
+      "2": "2 %",
+      "4": "4 %",
+      "6": "6 %",
+      "10": "10 %",
+      "14": "14 %"
+    },
+    "man_ph": {
+      "5.5": "5,5",
+      "6.5": "6,5",
+      "7.5": "7,5",
+      "8": "8,0",
+      "9": "9,0"
+    },
+    "man_source": {
+      "cattle": "Rind",
+      "pig": "Schwein"
+    },
+    "incorp_depth": {
+      "none": "Keine",
+      "shallow": "Flach",
+      "deep": "Tief"
+    },
+    "incorp_time": {
+      "0": "0 h",
+      "2": "2 h",
+      "4": "4 h",
+      "8": "8 h",
+      "12": "12 h",
+      "24": "24 h"
+    }
+  },
+  "categories": {
+    "app_time": {
+      "6": "Morgens",
+      "8": "Vormittags",
+      "12": "Mittags",
+      "16": "Nachmittags",
+      "20": "Abends"
+    },
+    "man_dm": {
+      "2": "Sehr flüssig",
+      "4": "Schwein typisch",
+      "6": "Rind typisch",
+      "10": "Dick",
+      "14": "Nahe Grenze"
+    },
+    "man_ph": {
+      "5.5": "Angesäuert",
+      "6.5": "Niedrig",
+      "7.5": "Rind typisch",
+      "8": "Schwein typisch",
+      "9": "Hoch"
+    }
+  },
+  "charts": {
+    "nh3_loss_pct": "NH3-Verlust (% des TAN)",
+    "nh3_loss_kgha": "NH3-Verlust (kg/ha)",
+    "temp_wind_short": "Temp / Wind",
+    "rain_short": "Regen (mm)",
+    "avg_temp": "Ø Temp (°C)",
+    "avg_wind": "Ø Wind (km/h)",
+    "avg_rain": "Tagesregen (mm)",
+    "air_temp": "Lufttemp (°C)",
+    "wind": "Wind (km/h)",
+    "rain": "Regen (mm)"
+  },
+  "time": {
+    "hours_short": "{{n}} h",
+    "days_short": "{{n}} T",
+    "days_hours": "{{d}} T {{h}} h",
+    "clock_offset": "{{clock}} (+{{h}} h)",
+    "day_clock": "Tag {{day}}, {{clock}} (+{{h}} h)"
+  },
+  "imprint": {
+    "title": "Impressum",
+    "home_link": "Startseite",
+    "country": "Österreich",
+    "email_label": "E-Mail",
+    "disclaimer_title": "Haftungsausschluss",
+    "disclaimer_body_1": "Die von ammonitor bereitgestellten Informationen dienen ausschließlich allgemeinen Informationszwecken. Alle Vorhersagen basieren auf Modellen und Wettervorhersagen und können von den tatsächlichen Bedingungen abweichen. Es wird keine Gewähr für die Richtigkeit oder Vollständigkeit der Ergebnisse übernommen.",
+    "disclaimer_body_2": "Ammonitor ersetzt keine professionelle landwirtschaftliche Beratung. Nutzer sollten qualifizierte Berater konsultieren, bevor sie Entscheidungen auf Basis der Ergebnisse des Werkzeugs treffen.",
+    "liability_title": "Haftung",
+    "liability_body": "Der Betreiber dieser Webseite haftet nicht für Schäden, die aus der Nutzung der bereitgestellten Informationen oder Dienste entstehen, sofern diese nicht durch Vorsatz oder grobe Fahrlässigkeit verursacht wurden.",
+    "copyright_title": "Urheberrechtshinweis",
+    "copyright_body_pre": "Dieses Projekt ist lizenziert unter der",
+    "copyright_body_mid": "Quellcode verfügbar auf"
+  },
+  "privacy": {
+    "title": "Datenschutzerklärung",
+    "last_updated": "Stand: April 2026",
+    "intro": "Ammonitor nimmt den Datenschutz ernst. Diese Erklärung beschreibt, welche Daten bei Nutzung dieser Webseite verarbeitet werden und zu welchen Zwecken.",
+    "controller_title": "Verantwortlicher",
+    "no_personal_title": "Keine Erfassung personenbezogener Daten",
+    "no_personal_body": "Ammonitor erfasst keine personenbezogenen Daten. Es gibt keine Benutzerregistrierung, keinen Login und keine Benutzerkonten. Wir verwenden GoatCounter, einen datenschutzfreundlichen Analysedienst, der keine Cookies verwendet und keine personenbezogenen Daten erfasst (siehe unten).",
+    "data_provide_title": "Daten, die Sie übermitteln",
+    "data_provide_body": "Bei Nutzung der Berechnungsfunktion werden folgende Daten an unseren Server gesendet:",
+    "data_provide_item_1": "Geografische Koordinaten (Breiten- und Längengrad) — von Ihnen auf der Karte ausgewählt oder per Suche eingegeben",
+    "data_provide_item_2": "Berechnungsparameter (Ausbringtechnik, Gülleeigenschaften, Einarbeitungseinstellungen, Zeitzone)",
+    "data_provide_after": "Diese Daten werden ausschließlich zur Berechnung der angeforderten Emissionsvorhersage verarbeitet und nach Rückgabe der Antwort weder gespeichert noch protokolliert.",
+    "third_party_title": "Dienste von Drittanbietern",
+    "third_party_body": "Bei Nutzung von ammonitor werden Daten an folgende externe Dienste gesendet:",
+    "tp_nominatim": "Wenn Sie nach einer Adresse suchen, wird Ihre Suchanfrage an den Nominatim-Geokodierungsdienst der OpenStreetMap Foundation gesendet. Siehe <1>OSMF-Datenschutzerklärung</1>.",
+    "tp_openmeteo": "Wettervorhersagedaten werden basierend auf den von Ihnen ausgewählten Koordinaten von Open-Meteo abgerufen. Siehe <1>Open-Meteo-Bedingungen</1>.",
+    "tp_osm_tiles": "Kartenkacheln werden zur Anzeige der Karte von OpenStreetMap-Servern geladen. IP-Adressen können vom Tile-Server protokolliert werden. Siehe <1>OSMF-Datenschutzerklärung</1>.",
+    "tp_goatcounter": "Wir verwenden <1>GoatCounter</1>, einen datenschutzfreundlichen Webanalysedienst. GoatCounter verwendet keine Cookies, erfasst keine personenbezogenen Daten und verfolgt Nutzer nicht über Seiten hinweg. Es werden nur anonymisierte Seitenaufrufe gezählt. Siehe <2>GoatCounter-Datenschutzerklärung</2>.",
+    "logs_title": "Server-Logs",
+    "logs_body": "Unser Hosting-Anbieter (Fly.io) kann technische Zugriffsdaten (IP-Adresse, Zeitstempel, angeforderte URL) im Rahmen des standardmäßigen Infrastrukturbetriebs protokollieren. Diese Logs sind für uns nicht zugänglich und werden nicht zum Tracking oder zur Profilbildung verwendet.",
+    "rights_title": "Ihre Rechte",
+    "rights_body": "Nach der EU-Datenschutz-Grundverordnung (DSGVO) haben Sie das Recht auf Auskunft, Berichtigung, Löschung und Einschränkung der Verarbeitung Ihrer personenbezogenen Daten. Da ammonitor keine personenbezogenen Daten speichert, sind diese Rechte in der Regel nicht anwendbar. Sie können uns aber jederzeit zu datenschutzrechtlichen Fragen kontaktieren.",
+    "changes_title": "Änderungen dieser Erklärung",
+    "changes_body": "Diese Erklärung kann von Zeit zu Zeit aktualisiert werden. Die jeweils aktuelle Fassung ist immer auf dieser Seite abrufbar."
+  },
+  "terms": {
+    "title": "Nutzungsbedingungen",
+    "last_updated": "Stand: April 2026",
+    "intro": "Mit der Nutzung von ammonitor stimmen Sie den folgenden Bedingungen zu. Wenn Sie nicht zustimmen, nutzen Sie diesen Dienst bitte nicht.",
+    "purpose_title": "Zweck",
+    "purpose_body": "Ammonitor liefert Ammoniak-Emissionsvorhersagen auf Basis des ALFAM2-Modells und von Wettervorhersagedaten. Das Werkzeug ist als Entscheidungshilfe für Landwirte, Berater und Forschende gedacht.",
+    "warranty_title": "Keine Gewährleistung",
+    "warranty_body": "Ammonitor wird „wie er ist“ ohne jegliche ausdrückliche oder stillschweigende Gewährleistung bereitgestellt. Vorhersagen sind modellbasierte Schätzungen und können von den tatsächlichen Feldbedingungen abweichen. Die Genauigkeit der Ergebnisse hängt von der Qualität der Eingabeparameter und der zugrundeliegenden Wettervorhersagen ab.",
+    "advice_title": "Keine professionelle Beratung",
+    "advice_body": "Die von ammonitor erzeugten Ergebnisse stellen keine professionelle landwirtschaftliche oder umweltbezogene Beratung dar. Nutzer sollten qualifizierte Fachleute konsultieren, bevor sie Entscheidungen auf Basis der Ergebnisse des Werkzeugs treffen. Der Betreiber übernimmt keine Verantwortung für Handlungen, die auf Grundlage der bereitgestellten Informationen vorgenommen werden.",
+    "availability_title": "Verfügbarkeit",
+    "availability_body": "Der Betreiber bemüht sich, ammonitor verfügbar zu halten, garantiert jedoch keinen unterbrechungsfreien Zugang. Der Dienst kann jederzeit ohne Vorankündigung geändert, ausgesetzt oder eingestellt werden.",
+    "license_title": "Open-Source-Lizenz",
+    "license_body_pre": "Der Quellcode von ammonitor ist lizenziert unter der",
+    "license_body_mid": "Mit der Nutzung dieses Dienstes erkennen Sie an, dass jegliche Netzwerknutzung der Software Sie berechtigt, eine Kopie des Quellcodes nach den Bedingungen der AGPL-3.0 zu erhalten. Der Quellcode ist verfügbar auf",
+    "third_party_title": "Drittanbieter-Dienste und Daten",
+    "third_party_body": "Ammonitor nutzt Daten und Dienste von Drittanbietern:",
+    "tp_alfam2": "Emissionsvorhersagen basieren auf dem ALFAM2-Modell (Hafner et al.). Siehe",
+    "tp_openmeteo": "Wettervorhersagen bereitgestellt unter",
+    "tp_osm": "Geokodierung und Kartendaten © OpenStreetMap-Mitwirkende, lizenziert unter",
+    "tp_after": "Der Betreiber garantiert weder die Verfügbarkeit noch die Genauigkeit dieser Drittanbieter-Dienste.",
+    "liability_title": "Haftungsbeschränkung",
+    "liability_body": "Im maximal gesetzlich zulässigen Umfang haftet der Betreiber nicht für direkte, indirekte, beiläufige, besondere oder Folgeschäden, die aus der Nutzung oder der Unmöglichkeit der Nutzung von ammonitor entstehen, einschließlich, aber nicht beschränkt auf entgangenen Gewinn, Datenverlust oder Ernteausfälle.",
+    "changes_title": "Änderungen dieser Bedingungen",
+    "changes_body": "Diese Bedingungen können von Zeit zu Zeit aktualisiert werden. Die fortgesetzte Nutzung von ammonitor nach Änderungen gilt als Annahme der überarbeiteten Bedingungen. Die jeweils aktuelle Fassung ist immer auf dieser Seite abrufbar.",
+    "contact_title": "Kontakt"
+  }
+}

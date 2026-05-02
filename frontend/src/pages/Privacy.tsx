@@ -1,83 +1,74 @@
 import { Link } from 'react-router-dom'
+import { useTranslation, Trans } from 'react-i18next'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 export default function Privacy() {
+  const { t } = useTranslation()
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
-      <div className="max-w-2xl mx-auto px-4 md:px-6 py-12 md:py-16">
-        <Link to="/" className="text-sm text-slate-400 hover:text-slate-200 mb-8 inline-block">← Home</Link>
+      <div className="max-w-2xl mx-auto px-4 md:px-6 py-6">
+        <div className="flex items-center justify-between mb-8">
+          <Link to="/" className="text-sm text-slate-400 hover:text-slate-200">← {t('imprint.home_link')}</Link>
+          <LanguageSwitcher />
+        </div>
 
-        <h1 className="text-3xl font-bold mb-6">Data Privacy Policy</h1>
+        <h1 className="text-3xl font-bold mb-6">{t('privacy.title')}</h1>
 
-        <p className="text-sm text-slate-500 mb-6">Last updated: April 2026</p>
+        <p className="text-sm text-slate-500 mb-6">{t('privacy.last_updated')}</p>
 
         <div className="space-y-6 text-slate-300 leading-relaxed">
+          <p>{t('privacy.intro')}</p>
+
+          <h2 className="text-xl font-semibold text-slate-100">{t('privacy.controller_title')}</h2>
           <p>
-            ammonitor takes data protection seriously. This policy describes what data is processed
-            when you use this website and for what purposes.
+            Andreas Tauböck, Frühstorf 13, 4341 Arbing, {t('imprint.country')}.<br />
+            {t('imprint.email_label')}: <a href="mailto:9v6uqtoy@anonaddy.me" className="underline hover:text-slate-100">9v6uqtoy@anonaddy.me</a>
           </p>
 
-          <h2 className="text-xl font-semibold text-slate-100">Data controller</h2>
-          <p>
-            Andreas Tauböck, Frühstorf 13, 4341 Arbing, Austria.<br />
-            E-mail: <a href="mailto:9v6uqtoy@anonaddy.me" className="underline hover:text-slate-100">9v6uqtoy@anonaddy.me</a>
-          </p>
+          <h2 className="text-xl font-semibold text-slate-100">{t('privacy.no_personal_title')}</h2>
+          <p>{t('privacy.no_personal_body')}</p>
 
-          <h2 className="text-xl font-semibold text-slate-100">No personal data collection</h2>
-          <p>
-            ammonitor does not collect any personal data. There is no user registration, no login,
-            no user accounts, and no tracking. We do not use cookies or any form of analytics.
-          </p>
-
-          <h2 className="text-xl font-semibold text-slate-100">Data you provide</h2>
-          <p>
-            When you use the calculation feature, the following data is sent to our server:
-          </p>
+          <h2 className="text-xl font-semibold text-slate-100">{t('privacy.data_provide_title')}</h2>
+          <p>{t('privacy.data_provide_body')}</p>
           <ul className="list-disc list-inside space-y-1 ml-2">
-            <li>Geographic coordinates (latitude, longitude) — selected by you on the map or entered via search</li>
-            <li>Calculation parameters (application method, manure properties, incorporation settings, timezone)</li>
+            <li>{t('privacy.data_provide_item_1')}</li>
+            <li>{t('privacy.data_provide_item_2')}</li>
           </ul>
-          <p>
-            This data is processed solely to compute the requested emission prediction and is not
-            stored or logged after the response is returned.
-          </p>
+          <p>{t('privacy.data_provide_after')}</p>
 
-          <h2 className="text-xl font-semibold text-slate-100">Third-party services</h2>
-          <p>When you use ammonitor, data is sent to the following external services:</p>
+          <h2 className="text-xl font-semibold text-slate-100">{t('privacy.third_party_title')}</h2>
+          <p>{t('privacy.third_party_body')}</p>
           <ul className="space-y-3 ml-2">
             <li>
-              <span className="font-semibold text-slate-100">Nominatim (OpenStreetMap)</span> — If you search for an address, your search query is sent to the Nominatim geocoding service operated by the OpenStreetMap Foundation. See{' '}
-              <a href="https://wiki.osmfoundation.org/wiki/Operations_Privacy_Policy" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-100">OSMF privacy policy</a>.
+              <span className="font-semibold text-slate-100">Nominatim (OpenStreetMap)</span> — <Trans i18nKey="privacy.tp_nominatim">
+                If you search for an address, your search query is sent to the Nominatim geocoding service operated by the OpenStreetMap Foundation. See <a href="https://wiki.osmfoundation.org/wiki/Operations_Privacy_Policy" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-100">OSMF privacy policy</a>.
+              </Trans>
             </li>
             <li>
-              <span className="font-semibold text-slate-100">Open-Meteo</span> — Weather forecast data is fetched from Open-Meteo based on the coordinates you select. See{' '}
-              <a href="https://open-meteo.com/en/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-100">Open-Meteo terms</a>.
+              <span className="font-semibold text-slate-100">Open-Meteo</span> — <Trans i18nKey="privacy.tp_openmeteo">
+                Weather forecast data is fetched from Open-Meteo based on the coordinates you select. See <a href="https://open-meteo.com/en/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-100">Open-Meteo terms</a>.
+              </Trans>
             </li>
             <li>
-              <span className="font-semibold text-slate-100">OpenStreetMap tile server</span> — Map tiles are loaded from OpenStreetMap servers to display the map. IP addresses may be logged by the tile server. See{' '}
-              <a href="https://wiki.osmfoundation.org/wiki/Operations_Privacy_Policy" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-100">OSMF privacy policy</a>.
+              <span className="font-semibold text-slate-100">OpenStreetMap tile server</span> — <Trans i18nKey="privacy.tp_osm_tiles">
+                Map tiles are loaded from OpenStreetMap servers to display the map. IP addresses may be logged by the tile server. See <a href="https://wiki.osmfoundation.org/wiki/Operations_Privacy_Policy" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-100">OSMF privacy policy</a>.
+              </Trans>
+            </li>
+            <li>
+              <span className="font-semibold text-slate-100">GoatCounter</span> — <Trans i18nKey="privacy.tp_goatcounter">
+                We use <a href="https://www.goatcounter.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-100">GoatCounter</a>, a privacy-friendly web analytics service. GoatCounter does not use cookies, does not collect personal data, and does not track users across sites. Only anonymized page views are counted. See <a href="https://www.goatcounter.com/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-100">GoatCounter privacy policy</a>.
+              </Trans>
             </li>
           </ul>
 
-          <h2 className="text-xl font-semibold text-slate-100">Server logs</h2>
-          <p>
-            Our hosting provider (Fly.io) may log technical access data (IP address, timestamp,
-            requested URL) as part of standard infrastructure operations. These logs are not
-            accessible to us and are not used for tracking or profiling.
-          </p>
+          <h2 className="text-xl font-semibold text-slate-100">{t('privacy.logs_title')}</h2>
+          <p>{t('privacy.logs_body')}</p>
 
-          <h2 className="text-xl font-semibold text-slate-100">Your rights</h2>
-          <p>
-            Under the EU General Data Protection Regulation (GDPR), you have the right to access,
-            rectification, erasure, and restriction of processing of your personal data. Since
-            ammonitor does not store personal data, these rights are generally not applicable, but
-            you may contact us at any time regarding data protection questions.
-          </p>
+          <h2 className="text-xl font-semibold text-slate-100">{t('privacy.rights_title')}</h2>
+          <p>{t('privacy.rights_body')}</p>
 
-          <h2 className="text-xl font-semibold text-slate-100">Changes to this policy</h2>
-          <p>
-            This policy may be updated from time to time. The current version is always available at
-            this page.
-          </p>
+          <h2 className="text-xl font-semibold text-slate-100">{t('privacy.changes_title')}</h2>
+          <p>{t('privacy.changes_body')}</p>
         </div>
       </div>
     </div>
