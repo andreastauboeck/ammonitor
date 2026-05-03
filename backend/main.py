@@ -5,6 +5,7 @@ Serves the API at /api/* and, in production, the built React frontend at /.
 from __future__ import annotations
 
 import os
+import subprocess
 from datetime import datetime, time as dt_time, timedelta
 from pathlib import Path
 from typing import Any, Literal
@@ -20,6 +21,34 @@ from weather import fetch_weather
 
 VERSION = os.getenv("VERSION", "0.1.0")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
+
+
+def _get_alfam2_info() -> tuple[str, str]:
+    try:
+        ver_proc = subprocess.run(
+            ["Rscript", "-e", "library(ALFAM2); cat(as.character(packageVersion('ALFAM2')))"],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+        alfam2_version = ver_proc.stdout.strip() if ver_proc.returncode == 0 else "unknown"
+    except Exception:
+        alfam2_version = "unknown"
+
+    try:
+        pars_proc = subprocess.run(
+            ["Rscript", "-e",
+             "library(ALFAM2);"
+             "cat(max(as.numeric(sub('alfam2pars','',"
+             "ls('package:ALFAM2',pattern='alfam2pars\\\\d+$')))))"],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+        alfam2_pars_set = pars_proc.stdout.strip() if pars_proc.returncode == 0 else "3"
+    except Exception:
+        alfam2_pars_set = "3"
+
+    return alfam2_version, alfam2_pars_set
+
+
+ALFAM2_VERSION, ALFAM2_PARS_SET = _get_alfam2_info()
 
 app = FastAPI(title="ammonitor API", version=VERSION)
 
@@ -134,6 +163,8 @@ def get_status() -> dict[str, str]:
         "status": "ok",
         "version": VERSION,
         "environment": ENVIRONMENT,
+        "alfam2_version": ALFAM2_VERSION,
+        "alfam2_pars_set": ALFAM2_PARS_SET,
     }
 
 

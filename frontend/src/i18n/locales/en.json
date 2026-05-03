@@ -9,6 +9,28 @@
     "en": "English",
     "de": "Deutsch"
   },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "settings": {
+    "label": "Settings",
+    "theme": "Theme",
+    "language": "Language"
+  },
+  "share": {
+    "label": "Share",
+    "text_default": "Ammonia emission forecast",
+    "text_with_subject": "Ammonia emission forecast for {{subject}}",
+    "copied": "Link copied",
+    "error": "Could not share. Copy the URL from the address bar."
+  },
+  "map": {
+    "gesture_touch": "Use two fingers to move the map",
+    "gesture_scroll": "Use Ctrl + scroll to zoom",
+    "gesture_scroll_mac": "Use \u2318 + scroll to zoom"
+  },
   "units": {
     "kg_per_ha": "kg/ha"
   },
@@ -17,6 +39,11 @@
     "subtitle": "Select a field on the map or search for a location, then start a calculation.",
     "search_placeholder": "Enter address…",
     "search_button": "Search",
+    "gps_button": "Use my location",
+    "recent_locations": "Recent locations",
+    "delete_location": "Remove from recents",
+    "rename_location": "Rename",
+    "save_name": "Save name",
     "map_data": "Map data",
     "selected": "selected",
     "start_button": "Start Calculation",
@@ -32,6 +59,7 @@
     "alfam2_title": "Powered by ALFAM2",
     "alfam2_body_pre": "The",
     "alfam2_body_post": "model (Hafner et al.) is a semi-empirical model for predicting ammonia volatilisation from field-applied manure, developed from over 2,000 measurements across Europe. We gratefully acknowledge the ALFAM2 team for making their work openly available — without it, ammonitor would not be possible.",
+    "alfam2_version_info": "ALFAM2 v{{version}} · Parameter Set {{parsSet}}",
     "info_open_source_title": "Open source",
     "info_open_source_body_pre": "Code available on",
     "info_open_source_body_post": "under AGPL-3.0. Inspect, fork, contribute.",
@@ -57,6 +85,7 @@
     "compare": "compare",
     "compare_hint": "Select a radio button to compare variants for that parameter",
     "tan_applied": "TAN applied",
+    "pars_set": "Set {{parsSet}}",
     "varied": "varied",
     "incorporation": "Incorporation",
     "depth": "Depth",

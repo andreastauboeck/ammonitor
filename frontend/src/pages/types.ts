@@ -128,7 +128,7 @@ export const TAN_PRESETS = [20, 30, 40, 50, 60, 70, 80, 100, 120, 150]
 export const DEFAULT_FORM_DATA: FormData = {
   tanApp: 60,
   variable: 'app_mthd',
-  appMthd: 'th',
+  appMthd: 'bc',
   manDm: 6,
   manPh: 7.5,
   manSource: 'cattle',

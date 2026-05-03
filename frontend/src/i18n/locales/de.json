@@ -9,6 +9,28 @@
     "en": "English",
     "de": "Deutsch"
   },
+  "theme": {
+    "light": "Hell",
+    "dark": "Dunkel",
+    "system": "System"
+  },
+  "settings": {
+    "label": "Einstellungen",
+    "theme": "Thema",
+    "language": "Sprache"
+  },
+  "share": {
+    "label": "Teilen",
+    "text_default": "Ammoniak-Emissionsvorhersage",
+    "text_with_subject": "Ammoniak-Emissionsvorhersage für {{subject}}",
+    "copied": "Link kopiert",
+    "error": "Teilen nicht möglich. Bitte URL aus der Adresszeile kopieren."
+  },
+  "map": {
+    "gesture_touch": "Zwei Finger zum Bewegen verwenden",
+    "gesture_scroll": "Strg + Scrollen zum Zoomen",
+    "gesture_scroll_mac": "\u2318 + Scrollen zum Zoomen"
+  },
   "units": {
     "kg_per_ha": "kg/ha"
   },
@@ -17,6 +39,11 @@
     "subtitle": "Wählen Sie ein Feld auf der Karte oder suchen Sie einen Standort, dann starten Sie eine Berechnung.",
     "search_placeholder": "Adresse eingeben…",
     "search_button": "Suchen",
+    "gps_button": "Meinen Standort verwenden",
+    "recent_locations": "Letzte Standorte",
+    "delete_location": "Aus Verlauf entfernen",
+    "rename_location": "Umbenennen",
+    "save_name": "Name speichern",
     "map_data": "Kartendaten",
     "selected": "ausgewählt",
     "start_button": "Berechnung starten",
@@ -32,6 +59,7 @@
     "alfam2_title": "Angetrieben von ALFAM2",
     "alfam2_body_pre": "Das",
     "alfam2_body_post": "-Modell (Hafner et al.) ist ein semi-empirisches Modell zur Vorhersage der Ammoniakverflüchtigung aus feldausgebrachter Gülle, entwickelt aus über 2.000 Messungen in ganz Europa. Wir danken dem ALFAM2-Team, das seine Arbeit offen zugänglich gemacht hat — ohne sie wäre ammonitor nicht möglich.",
+    "alfam2_version_info": "ALFAM2 v{{version}} · Parametersatz {{parsSet}}",
     "info_open_source_title": "Open Source",
     "info_open_source_body_pre": "Code verfügbar auf",
     "info_open_source_body_post": "unter AGPL-3.0. Einsehen, forken, mitwirken.",
@@ -57,6 +85,7 @@
     "compare": "vergleichen",
     "compare_hint": "Wählen Sie einen Optionsschalter, um Varianten dieses Parameters zu vergleichen",
     "tan_applied": "TAN-Gabe",
+    "pars_set": "Satz {{parsSet}}",
     "varied": "variiert",
     "incorporation": "Einarbeitung",
     "depth": "Tiefe",
