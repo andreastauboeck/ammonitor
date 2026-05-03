@@ -19,6 +19,13 @@
     "theme": "Thema",
     "language": "Sprache"
   },
+  "share": {
+    "label": "Teilen",
+    "text_default": "Ammoniak-Emissionsvorhersage",
+    "text_with_subject": "Ammoniak-Emissionsvorhersage für {{subject}}",
+    "copied": "Link kopiert",
+    "error": "Teilen nicht möglich. Bitte URL aus der Adresszeile kopieren."
+  },
   "map": {
     "gesture_touch": "Zwei Finger zum Bewegen verwenden",
     "gesture_scroll": "Strg + Scrollen zum Zoomen",

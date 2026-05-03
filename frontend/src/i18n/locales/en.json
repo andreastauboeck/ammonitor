@@ -19,6 +19,13 @@
     "theme": "Theme",
     "language": "Language"
   },
+  "share": {
+    "label": "Share",
+    "text_default": "Ammonia emission forecast",
+    "text_with_subject": "Ammonia emission forecast for {{subject}}",
+    "copied": "Link copied",
+    "error": "Could not share. Copy the URL from the address bar."
+  },
   "map": {
     "gesture_touch": "Use two fingers to move the map",
     "gesture_scroll": "Use Ctrl + scroll to zoom",

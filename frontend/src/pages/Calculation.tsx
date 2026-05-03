@@ -15,6 +15,7 @@ import OverviewChart from './OverviewChart'
 import DetailChart from './DetailChart'
 import SettingsMenu from '../components/SettingsMenu'
 import SiteIcon from '../components/SiteIcon'
+import ShareButton from '../components/ShareButton'
 
 const VARIABLE_OPTIONS_BEFORE_INCORP: VariableName[] = [
   'app_mthd', 'app_time', 'man_dm',
@@ -251,6 +252,16 @@ export default function Calculation() {
       ? data.days.find((d) => d.day === selectedDay)
       : null
 
+  // Build a readable subject for sharing: "Vienna" for overview, "Vienna — Apr 28" for detail.
+  const shareSubject = (() => {
+    const loc = locationName ?? (lat && lng ? `${parseFloat(lat).toFixed(2)}, ${parseFloat(lng).toFixed(2)}` : null)
+    if (!loc) return null
+    if (selectedDayData) {
+      return `${loc} — ${formatDayLabel(selectedDayData.start, i18n.language)}`
+    }
+    return loc
+  })()
+
   const renderInput = (
     variable: VariableName,
     currentValue: any,
@@ -330,7 +341,8 @@ export default function Calculation() {
               <span className="hidden sm:inline font-semibold text-sm">ammonitor</span>
             </span>
           </Link>
-          <div className="ml-auto flex items-center">
+          <div className="ml-auto flex items-center gap-1.5">
+            <ShareButton subject={shareSubject} />
             <SettingsMenu />
           </div>
         </div>
