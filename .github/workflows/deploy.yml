@@ -66,3 +66,9 @@ jobs:
         run: flyctl deploy --app ammonitor --image "${{ steps.image.outputs.tag }}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Set Sentry DSN
+        if: ${{ secrets.SENTRY_DSN != '' }}
+        run: flyctl secrets set SENTRY_DSN=${{ secrets.SENTRY_DSN }} --app ammonitor
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

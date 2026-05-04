@@ -56,7 +56,12 @@ export default function Privacy() {
             </li>
             <li>
               <span className="font-semibold text-slate-900 dark:text-slate-100">GoatCounter</span> — <Trans i18nKey="privacy.tp_goatcounter">
-                We use <a href="https://www.goatcounter.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-900 dark:hover:text-slate-100">GoatCounter</a>, a privacy-friendly web analytics service. GoatCounter does not use cookies, does not collect personal data, and does not track users across sites. Only anonymized page views are counted. See <a href="https://www.goatcounter.com/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-900 dark:hover:text-slate-100">GoatCounter privacy policy</a>.
+                A privacy-friendly web analytics service. No cookies, no personal data, no cross-site tracking. Only anonymized page views are counted. See <a href="https://www.goatcounter.com/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-900 dark:hover:text-slate-100">GoatCounter privacy policy</a>.
+              </Trans>
+            </li>
+            <li>
+              <span className="font-semibold text-slate-900 dark:text-slate-100">Sentry</span> — <Trans i18nKey="privacy.tp_sentry">
+                Error monitoring service (Sentry Inc., USA). When an error occurs, Sentry receives error messages, stack traces, and related metadata. Sentry may collect IP addresses for debugging purposes. See <a href="https://sentry.io/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-900 dark:hover:text-slate-100">Sentry privacy policy</a>.
               </Trans>
             </li>
           </ul>

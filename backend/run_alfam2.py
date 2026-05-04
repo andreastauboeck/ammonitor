@@ -10,6 +10,7 @@ N_DAYS * <num_values> groups per R invocation.
 from __future__ import annotations
 
 import csv
+import logging
 import math
 import os
 import subprocess
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 SCRIPT_DIR = Path(__file__).parent
+logger = logging.getLogger("ammonitor.alfam2")
 
 N_DAYS = 8
 PREDICTION_HOURS = 168
@@ -125,6 +127,8 @@ def _run_alfam2_r(
             writer.writerows(rows)
 
         r_script = SCRIPT_DIR / "run_alfam2.R"
+        logger.info("alfam2.r_start variable=%s days=%d variants=%d rows=%d",
+                    variable, N_DAYS, len(values), len(rows))
         proc = subprocess.run(
             ["Rscript", str(r_script), input_file, output_file],
             capture_output=True,
@@ -134,6 +138,7 @@ def _run_alfam2_r(
         )
 
         if proc.returncode != 0:
+            logger.error("alfam2.r_fail rc=%d stderr=%s", proc.returncode, proc.stderr[:500])
             raise RuntimeError(f"R script failed: {proc.stderr}")
 
         if not os.path.exists(output_file):
