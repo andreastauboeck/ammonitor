@@ -4,8 +4,10 @@ Serves the API at /api/* and, in production, the built React frontend at /.
 """
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
+import time as _time
 from datetime import datetime, time as dt_time, timedelta
 from pathlib import Path
 from typing import Any, Literal
@@ -21,6 +23,35 @@ from weather import fetch_weather
 
 VERSION = os.getenv("VERSION", "0.1.0")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
+
+logger = logging.getLogger("ammonitor")
+
+
+def _setup_logging() -> None:
+    fmt = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+    logging.basicConfig(level=logging.INFO, format=fmt)
+
+
+def _setup_sentry() -> None:
+    dsn = os.getenv("SENTRY_DSN")
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=dsn,
+            environment=ENVIRONMENT,
+            release=VERSION,
+            traces_sample_rate=0.0,
+            send_default_pii=False,
+        )
+        logger.info("Sentry initialized environment=%s release=%s", ENVIRONMENT, VERSION)
+    except Exception:
+        logger.warning("Failed to initialize Sentry", exc_info=True)
+
+
+_setup_logging()
+_setup_sentry()
 
 
 def _get_alfam2_info() -> tuple[str, str]:
@@ -185,8 +216,14 @@ def calculate(input_data: CalculateInput) -> dict:
     for each variant value, plus the hourly weather used for the simulation.
     """
     variable = input_data.variable
+    t0 = _time.monotonic()
+    logger.info(
+        "calculate.start variable=%s values=%s lat=%.4f lng=%.4f incorp_depth=%s",
+        variable, input_data.values, input_data.lat, input_data.lng, input_data.incorp_depth,
+    )
 
     if variable == "incorp_time" and input_data.incorp_depth == "none":
+        logger.warning("calculate.reject incorp_time with depth=none")
         raise HTTPException(
             status_code=422,
             detail="Cannot vary incorporation time when incorporation depth is 'none'",
@@ -195,6 +232,7 @@ def calculate(input_data: CalculateInput) -> dict:
     allowed = VARIANT_VALUES.get(variable, [])
     invalid = [v for v in input_data.values if v not in allowed]
     if invalid:
+        logger.warning("calculate.reject invalid_values=%s variable=%s", invalid, variable)
         raise HTTPException(
             status_code=422,
             detail=f"Invalid values for variable '{variable}': {invalid}. "
@@ -210,6 +248,8 @@ def calculate(input_data: CalculateInput) -> dict:
     try:
         weather = fetch_weather(input_data.lat, input_data.lng, input_data.timezone)
     except Exception as e:
+        logger.error("calculate.weather_fail lat=%.4f lng=%.4s tz=%s err=%s",
+                     input_data.lat, input_data.lng, input_data.timezone, e)
         raise HTTPException(status_code=502, detail=f"Weather fetch failed: {e}") from e
 
     first_hour_iso = weather["hourly"][0]["time_iso"]
@@ -238,7 +278,14 @@ def calculate(input_data: CalculateInput) -> dict:
             start_dates_iso=daily_starts,
         )
     except Exception as e:
+        logger.error("calculate.alfam2_fail variable=%s err=%s", variable, e)
         raise HTTPException(status_code=500, detail=f"ALFAM2 model error: {e}") from e
+
+    elapsed = _time.monotonic() - t0
+    logger.info(
+        "calculate.done variable=%s days=%d variants=%d elapsed=%.1fs",
+        variable, len(result["days"]), len(input_data.values), elapsed,
+    )
 
     return {
         "variable": variable,

@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import threading
 import time
 import urllib.parse
 import urllib.request
 from threading import Lock
+
+logger = logging.getLogger("ammonitor.weather")
 
 # How many days of hourly forecast we need:
 # For 8 days (day 0..7) each spanning 7 days (168 h), and an application
@@ -65,8 +68,10 @@ def fetch_weather(lat: float, lng: float, timezone_name: str = "auto") -> dict:
         if cached is not None:
             ts, data = cached
             if time.time() - ts < CACHE_TTL:
+                logger.debug("weather.cache_hit key=%s", key)
                 return data
 
+    logger.info("weather.cache_miss key=%s", key)
     data = _fetch_from_open_meteo(lat, lng, timezone_name)
 
     with _cache_lock:
