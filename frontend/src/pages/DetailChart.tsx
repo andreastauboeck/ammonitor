@@ -169,6 +169,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   const tooltipTrigger: 'click' | 'hover' = isTouch ? 'click' : 'hover'
   const [touchTooltipActive, setTouchTooltipActive] = useState(false)
   const autoDismissRef = useRef<ReturnType<typeof setTimeout>>()
+  const syncIdRef = useRef(`detail-${Math.random().toString(36).slice(2)}`)
 
   const handleChartClick = (e: any) => {
     if (!isTouch) return
@@ -447,7 +448,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
               <LineChart
                 data={detailData}
                 margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
-                syncId="detail-charts"
+                syncId={syncIdRef.current}
                 onClick={isTouch ? handleChartClick : undefined}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
@@ -594,7 +595,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
               <ComposedChart
                 data={detailData}
                 margin={{ top: 5, right: 0, left: 0, bottom: 5 }}
-                syncId="detail-charts"
+                syncId={syncIdRef.current}
                 onClick={isTouch ? handleChartClick : undefined}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />

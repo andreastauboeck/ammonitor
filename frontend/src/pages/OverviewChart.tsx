@@ -129,8 +129,15 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
   const emissionScrollRef = useRef<HTMLDivElement>(null)
   const weatherScrollRef = useRef<HTMLDivElement>(null)
   const isSyncingRef = useRef(false)
-  const [touchTooltipActive, setTouchTooltipActive] = useState(false)
-  const autoDismissRef = useRef<ReturnType<typeof setTimeout>>()
+  const syncIdRef = useRef(`overview-${Math.random().toString(36).slice(2)}`)
+  const [scrollTooltip, setScrollTooltip] = useState(false)
+  const scrollDismissRef = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(() => {
+    return () => {
+      if (scrollDismissRef.current) clearTimeout(scrollDismissRef.current)
+    }
+  }, [])
 
   const overviewData = useMemo(() => {
     return data.days.map((d) => {
@@ -162,25 +169,20 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
   }, [overviewData, values])
 
   const handleEmissionClick = (e: any) => {
-    if (isTouch && e && typeof e.activeTooltipIndex === 'number') {
+    if (e && typeof e.activeTooltipIndex === 'number') {
       const row = overviewData[e.activeTooltipIndex]
       if (row) onDayClick(row.day)
     }
   }
 
-  const handleWeatherClick = (e: any) => {
-    if (!isTouch) return
-    if (e && typeof e.activeTooltipIndex === 'number') {
-      const row = weatherOverviewData[e.activeTooltipIndex]
-      if (row) onDayClick(row.day)
-    }
-  }
+  const handleWeatherClick = (_e: any) => {}
 
   const syncScroll = (source: 'emission' | 'weather') => () => {
     if (isSyncingRef.current) return
-    if (isTouch && touchTooltipActive) {
-      setTouchTooltipActive(false)
-      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
+    if (isTouch) {
+      setScrollTooltip(true)
+      if (scrollDismissRef.current) clearTimeout(scrollDismissRef.current)
+      scrollDismissRef.current = setTimeout(() => setScrollTooltip(false), 1200)
     }
     const src = source === 'emission' ? emissionScrollRef.current : weatherScrollRef.current
     const tgt = source === 'emission' ? weatherScrollRef.current : emissionScrollRef.current
@@ -309,21 +311,16 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                 margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
                 barCategoryGap="10%"
                 barGap={2}
-                syncId="overview-charts"
-                onClick={isTouch ? handleEmissionClick : (e: any) => {
-                  if (e && typeof e.activeTooltipIndex === 'number') {
-                    const row = overviewData[e.activeTooltipIndex]
-                    if (row) onDayClick(row.day)
-                  }
-                }}
+                syncId={syncIdRef.current}
+                onClick={handleEmissionClick}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
                 <XAxis dataKey="dayLabel" stroke={colors.axis} tick={{ fontSize: 11, fill: colors.axis }} />
                 <YAxis yAxisId="left" domain={[0, overviewMax]} hide />
                 <YAxis yAxisId="right" orientation="right" domain={[0, overviewMax]} hide />
                 <Tooltip
-                  trigger={isTouch ? 'click' : 'hover'}
-                  content={<EmissionTooltip tanApp={formData.tanApp} forceHide={isTouch} unit={t('units.kg_per_ha')} colors={colors} />}
+                  trigger="hover"
+                  content={<EmissionTooltip tanApp={formData.tanApp} forceHide={isTouch && !scrollTooltip} unit={t('units.kg_per_ha')} colors={colors} />}
                   cursor={isTouch ? false : { fill: colors.cursorFill }}
                 />
                 {values.map((value, i) => (
@@ -423,16 +420,16 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
               <ComposedChart
                 data={weatherOverviewData}
                 margin={{ top: 5, right: 0, left: 0, bottom: 5 }}
-                syncId="overview-charts"
-                onClick={isTouch ? handleWeatherClick : undefined}
+                syncId={syncIdRef.current}
+                onClick={handleWeatherClick}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
                 <XAxis dataKey="dayLabel" stroke={colors.axis} tick={{ fontSize: 11, fill: colors.axis }} />
                 <YAxis yAxisId="left" domain={[0, weatherLeftMax]} hide />
                 <YAxis yAxisId="right" orientation="right" domain={[0, weatherRightMax]} hide />
                 <Tooltip
-                  trigger={isTouch ? 'click' : 'hover'}
-                  content={<WeatherTooltip forceHide={isTouch} colors={colors} />}
+                  trigger="hover"
+                  content={<WeatherTooltip forceHide={isTouch && !scrollTooltip} colors={colors} />}
                   cursor={isTouch ? false : { fill: colors.cursorFill }}
                 />
                 <Area

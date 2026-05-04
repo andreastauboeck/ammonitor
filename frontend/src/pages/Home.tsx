@@ -69,6 +69,7 @@ export default function Home() {
   const [editingTs, setEditingTs] = useState<number | null>(null)
   const [editingValue, setEditingValue] = useState('')
   const mapRef = useRef<Map | null>(null)
+  const geocodeControllerRef = useRef<AbortController | null>(null)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -109,9 +110,12 @@ export default function Home() {
 
   const reverseGeocode = async (lat: number, lng: number): Promise<string | null> => {
     try {
+      geocodeControllerRef.current?.abort()
+      const controller = new AbortController()
+      geocodeControllerRef.current = controller
       const res = await fetch(
         `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=${i18n.language}`,
-        { headers: { 'User-Agent': 'ammonitor/0.3' } }
+        { headers: { 'User-Agent': 'ammonitor/0.3' }, signal: controller.signal }
       )
       const d = await res.json()
       return d.address?.city || d.address?.town || d.address?.village || d.address?.municipality || d.address?.county || null
@@ -142,9 +146,12 @@ export default function Home() {
     if (!address.trim()) return
     setIsGeocoding(true)
     try {
+      geocodeControllerRef.current?.abort()
+      const controller = new AbortController()
+      geocodeControllerRef.current = controller
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&accept-language=${i18n.language}&q=${encodeURIComponent(address)}`,
-        { headers: { 'User-Agent': 'ammonitor/0.3' } }
+        { headers: { 'User-Agent': 'ammonitor/0.3' }, signal: controller.signal }
       )
       const data = await res.json()
       if (data && data.length > 0) {
@@ -155,6 +162,7 @@ export default function Home() {
         mapRef.current?.flyTo([newLocation.lat, newLocation.lng], 13)
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       console.error('Geocoding failed:', err)
     } finally {
       setIsGeocoding(false)
@@ -243,21 +251,20 @@ export default function Home() {
 
       {/* ── Hero + Map ── */}
       <div className="max-w-6xl mx-auto px-4 md:px-6 pt-4 md:pt-6 pb-8">
-        <div className="flex flex-col lg:flex-row gap-0 lg:gap-8 items-start">
+        <div className="flex flex-col min-[750px]:flex-row gap-0 min-[750px]:gap-8 items-start">
 
-          {/* Left: intro + search */}
-          <div className="lg:w-2/5 flex flex-col">
+          <div className="min-[750px]:w-1/2 flex flex-col min-w-0">
             <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="w-28 h-32 rounded-xl bg-amber-50 flex items-center justify-center">
-                <img src="/logo.png" alt="" className="w-24 h-28" />
+              <div className="w-20 h-24 sm:w-28 sm:h-32 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+                <img src="/logo.png" alt="" className="w-16 h-20 sm:w-24 sm:h-28" />
               </div>
               <h1 className="text-3xl md:text-4xl font-bold">ammonitor</h1>
             </div>
 
-            <p className="text-lg text-slate-700 dark:text-slate-300 mb-1 text-center">
+            <p className="text-base sm:text-lg text-slate-700 dark:text-slate-300 mb-1 text-center">
               {t('home.tagline')}
             </p>
-            <p className="text-sm text-slate-500 mb-6 text-center">
+            <p className="text-xs sm:text-sm text-slate-500 mb-4 sm:mb-6 text-center">
               {t('home.subtitle')}
             </p>
 
@@ -268,12 +275,12 @@ export default function Home() {
                 onChange={(e) => setAddress(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={t('home.search_placeholder')}
-                className="flex-1 px-4 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                className="min-w-0 flex-1 px-3 sm:px-4 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500 text-sm"
               />
               <button
                 onClick={handleGeocode}
                 disabled={isGeocoding}
-                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors text-sm font-medium"
+                className="px-3 sm:px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors text-xs sm:text-sm font-medium whitespace-nowrap"
               >
                 {isGeocoding ? '…' : t('home.search_button')}
               </button>
@@ -368,7 +375,7 @@ export default function Home() {
             {location && (
               <>
                 {/* Phone portrait: Calculate button sits right under recent locations */}
-                <div className="lg:hidden mb-4">
+                <div className="min-[750px]:hidden mb-4">
                   <p className="text-sm text-slate-600 dark:text-slate-400 mb-3 text-center">
                     <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
                     {' '}{t('home.selected')}
@@ -381,7 +388,7 @@ export default function Home() {
                   </button>
                 </div>
                 {/* Desktop: Calculate button under search panel, beside the map */}
-                <div className="hidden lg:block">
+                <div className="hidden min-[750px]:block">
                   <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
                     <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
                     {' '}{t('home.selected')}
@@ -398,7 +405,7 @@ export default function Home() {
           </div>
 
           {/* Right: map */}
-          <div className="lg:w-3/5 w-full">
+          <div className="min-[750px]:w-1/2 w-full">
             <div className="h-72 md:h-96 rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700">
               <MapContainer
                 center={[48.5, 10]}
