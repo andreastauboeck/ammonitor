@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { useTranslation } from 'react-i18next'
-import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
+import React, {useCallback, useEffect, useState} from 'react'
+import {useTranslation} from 'react-i18next'
+import {Link, useNavigate, useParams, useSearchParams} from 'react-router-dom'
 import {
   type ApiResponse,
-  type FormData,
-  type VariableName,
-  type VariantDef,
-  VARIANT_DEFS,
-  TAN_PRESETS,
   DEFAULT_FORM_DATA,
   formatDayLabel,
+  type FormData,
+  TAN_PRESETS,
+  type VariableName,
+  VARIANT_DEFS,
+  type VariantDef,
 } from './types'
 import OverviewChart from './OverviewChart'
 import DetailChart from './DetailChart'
@@ -114,12 +114,16 @@ export default function Calculation() {
   const iconExpanded = iconHover || (isTouch && atTop)
 
   useEffect(() => {
-    fetch('/api/status')
+    const controller = new AbortController()
+    fetch('/api/status', { signal: controller.signal })
       .then((res) => res.json())
       .then((d) => {
         if (d.alfam2_version) setAlfam2Info({ version: d.alfam2_version, parsSet: d.alfam2_pars_set })
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+      })
+    return () => controller.abort()
   }, [])
 
   useEffect(() => {
@@ -129,9 +133,10 @@ export default function Calculation() {
 
   useEffect(() => {
     if (!lat || !lng) return
+    const controller = new AbortController()
     fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=${i18n.language}`,
-      { headers: { 'User-Agent': 'ammonitor/0.3' } }
+      { headers: { 'User-Agent': 'ammonitor/0.3' }, signal: controller.signal }
     )
       .then((res) => res.json())
       .then((d) => {
@@ -143,12 +148,18 @@ export default function Calculation() {
           d.address?.county
         setLocationName(city || null)
       })
-      .catch(() => setLocationName(null))
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setLocationName(null)
+      })
       .finally(() => setLocationLoading(false))
+    return () => controller.abort()
   }, [lat, lng, i18n.language])
 
   useEffect(() => {
     if (!lat || !lng) return
+
+    const controller = new AbortController()
 
     setLoading(true)
     setError(null)
@@ -161,6 +172,7 @@ export default function Calculation() {
     fetch('/api/calculate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         lat: parseFloat(lat),
         lng: parseFloat(lng),
@@ -185,13 +197,17 @@ export default function Calculation() {
       })
       .then((payload: ApiResponse) => {
         setData(payload)
+        setLoading(false)
       })
-      .catch((err) => {
-        console.error('Calculation error:', err)
-        setError(err.message)
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('Calculation error:', message)
+        setError(message)
         setData(null)
+        setLoading(false)
       })
-      .finally(() => setLoading(false))
+    return () => controller.abort()
   }, [
     lat,
     lng,
@@ -268,8 +284,7 @@ export default function Calculation() {
     onChange: (value: any) => void,
   ) => {
     const defs = VARIANT_DEFS[variable]
-    const isVariable = formData.variable === variable
-    const isDisabled = isVariable
+    const isDisabled = formData.variable === variable
     const isNumeric = (
       variable === 'man_dm' || variable === 'man_ph' ||
       variable === 'incorp_time' || variable === 'app_time'
