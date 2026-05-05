@@ -57,6 +57,11 @@ def _setup_sentry() -> None:
             # run the profiler on when there is an active transaction
             profile_lifecycle="trace",
         )
+        from sentry_sdk import metrics
+        metrics.count("checkout.failed", 1)
+        metrics.gauge("queue.depth", 42)
+        metrics.distribution("cart.amount_usd", 187.5)
+
         logger.info("Sentry initialized environment=%s release=%s", ENVIRONMENT, VERSION)
     except Exception:
         logger.warning("Failed to initialize Sentry", exc_info=True)
