@@ -4,6 +4,9 @@ import {Link, useNavigate, useParams, useSearchParams} from 'react-router-dom'
 import {
   type ApiResponse,
   DEFAULT_FORM_DATA,
+  type FertilizerId,
+  FERTILIZER_PRESETS,
+  FERTILIZER_PRICES_DATE,
   formatDayLabel,
   type FormData,
   TAN_PRESETS,
@@ -16,6 +19,7 @@ import DetailChart from './DetailChart'
 import SettingsMenu from '../components/SettingsMenu'
 import SiteIcon from '../components/SiteIcon'
 import ShareButton from '../components/ShareButton'
+import UnitToggle from '../components/UnitToggle'
 
 const VARIABLE_OPTIONS_BEFORE_INCORP: VariableName[] = [
   'app_mthd', 'app_time', 'man_dm',
@@ -29,8 +33,10 @@ const ALL_VARIABLES: VariableName[] = [
   'incorp_depth', 'incorp_time', 'man_source',
 ]
 
+const FERT_IDS: FertilizerId[] = ['can', 'urea', 'uan', 'ssa', 'custom']
+
 function serializeForm(formData: FormData): Record<string, string> {
-  return {
+  const out: Record<string, string> = {
     variable: formData.variable,
     tanApp: String(formData.tanApp),
     appMthd: formData.appMthd,
@@ -40,7 +46,16 @@ function serializeForm(formData: FormData): Record<string, string> {
     appTime: String(formData.appTime),
     incorpTime: String(formData.incorpTime),
     incorpDepth: formData.incorpDepth,
+    fert: formData.fertilizer,
+    unit: formData.chartUnit,
   }
+  if (formData.fertilizer === 'custom') {
+    out.eurkgn = String(formData.customEurPerKgN)
+  }
+  if (formData.farmSizeHa && formData.farmSizeHa > 0) {
+    out.farmha = String(formData.farmSizeHa)
+  }
+  return out
 }
 
 function deserializeForm(params: URLSearchParams): FormData {
@@ -61,6 +76,23 @@ function deserializeForm(params: URLSearchParams): FormData {
   if (params.has('incorpTime')) d.incorpTime = parseFloat(params.get('incorpTime')!) || 0
   if (params.has('incorpDepth') && ['none', 'shallow', 'deep'].includes(params.get('incorpDepth')!))
     d.incorpDepth = params.get('incorpDepth') as FormData['incorpDepth']
+  if (params.has('fert') && FERT_IDS.includes(params.get('fert') as FertilizerId)) {
+    d.fertilizer = params.get('fert') as FertilizerId
+  }
+  if (params.has('eurkgn')) {
+    const v = parseFloat(params.get('eurkgn')!)
+    if (!isNaN(v) && v > 0) d.customEurPerKgN = v
+  }
+  if (params.has('farmha')) {
+    const v = parseFloat(params.get('farmha')!)
+    if (!isNaN(v) && v > 0) d.farmSizeHa = v
+  }
+  if (params.has('unit')) {
+    const u = params.get('unit')
+    if (u === 'kgha' || u === 'eur') {
+      d.chartUnit = u
+    }
+  }
   return d
 }
 
@@ -92,6 +124,7 @@ export default function Calculation() {
 
   const [formData, setFormData] = useState<FormData>(() => deserializeForm(searchParams))
   const [showRadioHint, setShowRadioHint] = useState(false)
+  const [showFarmSize, setShowFarmSize] = useState<boolean>(() => !!formData.farmSizeHa)
 
   // Logo expansion: on hover (desktop) or when scrolled to top (touch devices).
   const [iconHover, setIconHover] = useState(false)
@@ -527,6 +560,99 @@ export default function Calculation() {
                 </React.Fragment>
               ))}
             </div>
+
+            {/* Cost basis */}
+            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">
+                {t('costs.basis_title')}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                    {t('fertilizers.label')}
+                  </label>
+                  <select
+                    value={formData.fertilizer}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        fertilizer: e.target.value as FertilizerId,
+                      }))
+                    }
+                    className="w-full px-2 py-1.5 text-sm rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                  >
+                    {(Object.keys(FERTILIZER_PRESETS) as FertilizerId[]).map((id) => (
+                      <option key={id} value={id}>
+                        {t(`fertilizers.${id}`)}
+                        {id !== 'custom'
+                          ? ` (${FERTILIZER_PRESETS[id].eurPerKgN.toFixed(2)} ${t('units.eur_per_kg_n')})`
+                          : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {formData.fertilizer === 'custom' && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={formData.customEurPerKgN}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value)
+                          if (!isNaN(v) && v > 0) {
+                            setFormData((prev) => ({ ...prev, customEurPerKgN: v }))
+                          }
+                        }}
+                        className="flex-1 px-2 py-1.5 text-sm rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                      />
+                      <span className="text-xs text-slate-500">{t('units.eur_per_kg_n')}</span>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showFarmSize}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                        setShowFarmSize(next)
+                        if (!next) {
+                          setFormData((prev) => ({ ...prev, farmSizeHa: undefined }))
+                        } else if (!formData.farmSizeHa) {
+                          setFormData((prev) => ({ ...prev, farmSizeHa: 100 }))
+                        }
+                      }}
+                      className="accent-emerald-400"
+                    />
+                    {t('costs.calc_annual')}
+                  </label>
+                  {showFarmSize && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={formData.farmSizeHa ?? ''}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value)
+                          setFormData((prev) => ({
+                            ...prev,
+                            farmSizeHa: !isNaN(v) && v > 0 ? v : undefined,
+                          }))
+                        }}
+                        className="flex-1 px-2 py-1.5 text-sm rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                        placeholder={t('costs.farm_size')}
+                      />
+                      <span className="text-xs text-slate-500">{t('units.ha')}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2">
+                {t('costs.prices_as_of', { date: FERTILIZER_PRICES_DATE })}
+              </p>
+            </div>
           </div>
 
           {/* Chart panel */}
@@ -552,7 +678,7 @@ export default function Calculation() {
                       variable: t(`variables.${formData.variable}`),
                     })}
               </h2>
-              {alfam2Info && selectedDay === null && (
+              {alfam2Info && (
                 <span className="text-[10px] text-slate-400 dark:text-slate-600 ml-2 shrink-0 hidden sm:inline">
                   ALFAM2 v{alfam2Info.version} · {t('calculation.pars_set', { parsSet: alfam2Info.parsSet })}
                 </span>
@@ -569,6 +695,13 @@ export default function Calculation() {
                   </svg>
                 </button>
               )}
+            </div>
+
+            <div className="flex justify-end mb-2">
+              <UnitToggle
+                value={formData.chartUnit}
+                onChange={(u) => setFormData((prev) => ({ ...prev, chartUnit: u }))}
+              />
             </div>
 
             {error && (

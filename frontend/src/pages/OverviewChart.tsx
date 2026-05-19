@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   BarChart,
@@ -14,6 +14,7 @@ import {
 } from 'recharts'
 import {
   type ApiResponse,
+  type ChartUnit,
   type FormData,
   type VariableName,
   VARIANT_COLORS,
@@ -21,9 +22,21 @@ import {
 } from './types'
 import { useTheme } from '../theme/ThemeContext'
 import { getChartColors, type ChartColors } from '../theme/chartColors'
+import {
+  computeCostSummary,
+  formatEur,
+  getEurPerKgN,
+  pctToEurPerHa,
+  pctToKgPerHa,
+} from '../lib/costs'
 
 function variantLabel(t: any, variable: VariableName, value: string | number): string {
   return t(`variants.${variable}.${value}`, { defaultValue: String(value) })
+}
+
+/** Convert a variant value to a Recharts-safe dataKey (no dots — Recharts treats dots as nested path access). */
+function valueToKey(value: string | number): string {
+  return String(value).replace(/\./g, '_')
 }
 
 interface EmissionTooltipProps {
@@ -32,11 +45,17 @@ interface EmissionTooltipProps {
   label?: string | number
   tanApp: number
   forceHide?: boolean
-  unit: string
   colors: ChartColors
+  chartUnit: ChartUnit
+  eurPerKgN: number
+  locale: string
+  kgUnitLabel: string
 }
 
-function EmissionTooltip({ active, payload, label, tanApp, forceHide, unit, colors }: EmissionTooltipProps) {
+function EmissionTooltip({
+  active, payload, label, tanApp, forceHide, colors,
+  chartUnit, eurPerKgN, locale, kgUnitLabel,
+}: EmissionTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
   return (
@@ -54,10 +73,15 @@ function EmissionTooltip({ active, payload, label, tanApp, forceHide, unit, colo
       <div style={{ fontWeight: 600 }}>{label}</div>
       {payload.map((entry: any) => {
         const pct = entry.value as number
-        const kg = (pct * tanApp) / 100
+        const kg = pctToKgPerHa(pct, tanApp)
+        const eur = pctToEurPerHa(pct, tanApp, eurPerKgN)
+        const main = `${pct.toFixed(1)}%`
+        const secondary = chartUnit === 'kgha'
+          ? `${kg.toFixed(1)} ${kgUnitLabel}`
+          : `${formatEur(eur, locale)}/ha`
         return (
           <div key={entry.dataKey} style={{ color: entry.color }}>
-            {entry.name}: {pct.toFixed(1)}% ({kg.toFixed(1)} {unit})
+            {entry.name}: {main} ({secondary})
           </div>
         )
       })}
@@ -126,12 +150,69 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
   const variableName = data.variable
   const values = data.values
   const isTouch = useIsTouch()
+  const eurPerKgN = getEurPerKgN(formData)
+  const chartUnit: ChartUnit = formData.chartUnit
+  const tanApp = formData.tanApp
+  const locale = i18n.language
+  const kgUnitLabel = t('units.kg_per_ha')
   const emissionScrollRef = useRef<HTMLDivElement>(null)
   const weatherScrollRef = useRef<HTMLDivElement>(null)
   const isSyncingRef = useRef(false)
   const syncIdRef = useRef(`overview-${Math.random().toString(36).slice(2)}`)
   const [scrollTooltip, setScrollTooltip] = useState(false)
   const scrollDismissRef = useRef<ReturnType<typeof setTimeout>>()
+  const [hiddenValues, setHiddenValues] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(`ammonitor-hidden-${variableName}`)
+      if (stored) return new Set(JSON.parse(stored) as string[])
+    } catch {}
+    return new Set()
+  })
+
+  // Reload hiddenValues from localStorage when the variable changes,
+  // so each variable has its own independent persisted hidden set.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`ammonitor-hidden-${variableName}`)
+      setHiddenValues(stored ? new Set(JSON.parse(stored) as string[]) : new Set())
+    } catch {
+      setHiddenValues(new Set())
+    }
+  }, [variableName])
+
+  const toggleValue = useCallback((value: string) => {
+    setHiddenValues((prev) => {
+      const next = new Set(prev)
+      if (next.has(value)) {
+        next.delete(value)
+      } else {
+        // Count how many of the current values are actually visible, ignoring stale entries.
+        // Keep at least 2 variants visible so there's always something to compare.
+        const valueSet = new Set(values.map((v) => String(v)))
+        let visibleCount = 0
+        for (const v of valueSet) if (!prev.has(v)) visibleCount++
+        if (visibleCount <= 2) return prev
+        next.add(value)
+      }
+      return next
+    })
+  }, [values])
+
+  useEffect(() => {
+    try {
+      const key = `ammonitor-hidden-${variableName}`
+      if (hiddenValues.size > 0) {
+        localStorage.setItem(key, JSON.stringify([...hiddenValues]))
+      } else {
+        localStorage.removeItem(key)
+      }
+    } catch {}
+  }, [hiddenValues, variableName])
+
+  const visibleValues = useMemo(
+    () => values.filter((v) => !hiddenValues.has(String(v))),
+    [values, hiddenValues],
+  )
 
   useEffect(() => {
     return () => {
@@ -151,7 +232,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
         start: d.start,
       }
       for (const v of d.variants) {
-        row[String(v.value)] = v.final_loss_pct
+        row[valueToKey(v.value)] = v.final_loss_pct
       }
       return row
     })
@@ -160,13 +241,13 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
   const overviewMax = useMemo(() => {
     let m = 0
     for (const row of overviewData) {
-      for (const v of values) {
-        const cell = row[String(v)] ?? 0
+      for (const v of visibleValues) {
+        const cell = row[valueToKey(v)] ?? 0
         if (cell > m) m = cell
       }
     }
     return niceMax(m)
-  }, [overviewData, values])
+  }, [overviewData, visibleValues])
 
   const handleEmissionClick = (e: any) => {
     if (e && typeof e.activeTooltipIndex === 'number') {
@@ -263,15 +344,26 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
     <>
       {/* Fixed legend */}
       <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-700 dark:text-slate-300 mb-1 shrink-0">
-        {values.map((value, i) => (
-          <span key={String(value)} className="inline-flex items-center gap-1">
-            <span
-              className="inline-block w-3 h-3"
-              style={{ backgroundColor: VARIANT_COLORS[i % VARIANT_COLORS.length] }}
-            />
-            {variantLabel(t, variableName, value)}
-          </span>
-        ))}
+        {values.map((value, i) => {
+          const hidden = hiddenValues.has(String(value))
+          return (
+            <button
+              key={String(value)}
+              type="button"
+              onClick={() => toggleValue(String(value))}
+              className={`inline-flex items-center gap-1 cursor-pointer select-none transition-opacity ${hidden ? 'opacity-30' : 'opacity-100'}`}
+            >
+              <span
+                className="inline-block w-3 h-3 border"
+                style={{
+                  backgroundColor: hidden ? 'transparent' : VARIANT_COLORS[i % VARIANT_COLORS.length],
+                  borderColor: VARIANT_COLORS[i % VARIANT_COLORS.length],
+                }}
+              />
+              {variantLabel(t, variableName, value)}
+            </button>
+          )
+        })}
       </div>
 
       <div className="flex-[3] min-h-0 flex">
@@ -294,6 +386,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                   stroke={colors.axis}
                   tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, overviewMax]}
+                  tickFormatter={(v: number) => v.toFixed(0)}
                   width={30}
                 />
                 <XAxis dataKey="dayLabel" hide />
@@ -320,43 +413,57 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                 <YAxis yAxisId="right" orientation="right" domain={[0, overviewMax]} hide />
                 <Tooltip
                   trigger="hover"
-                  content={<EmissionTooltip tanApp={formData.tanApp} forceHide={isTouch && !scrollTooltip} unit={t('units.kg_per_ha')} colors={colors} />}
+                  content={
+                    <EmissionTooltip
+                      tanApp={tanApp}
+                      forceHide={isTouch && !scrollTooltip}
+                      colors={colors}
+                      chartUnit={chartUnit}
+                      eurPerKgN={eurPerKgN}
+                      locale={locale}
+                      kgUnitLabel={kgUnitLabel}
+                    />
+                  }
                   cursor={isTouch ? false : { fill: colors.cursorFill }}
                 />
-                {values.map((value, i) => (
-                  <Bar
-                    key={String(value)}
-                    dataKey={String(value)}
-                    name={variantLabel(t, variableName, value)}
-                    yAxisId="left"
-                    fill={VARIANT_COLORS[i % VARIANT_COLORS.length]}
-                    cursor="pointer"
-                  />
-                ))}
+                {visibleValues.map((value) => {
+                  const i = values.indexOf(value)
+                  return (
+                    <Bar
+                      key={String(value)}
+                      dataKey={valueToKey(value)}
+                      name={variantLabel(t, variableName, value)}
+                      yAxisId="left"
+                      fill={VARIANT_COLORS[i % VARIANT_COLORS.length]}
+                      cursor="pointer"
+                    />
+                  )
+                })}
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Right fixed column: right y-axis + vertical label */}
+        {/* Right fixed column: right y-axis + vertical label (secondary unit) */}
         <div className="flex shrink-0 h-full">
-          <div style={{ width: 30 }} className="h-full">
+          <div style={{ width: chartUnit === 'eur' ? 44 : 36 }} className="h-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={overviewData}
                 margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
               >
                 <YAxis
-                  key={`right-${overviewMax}-${formData.tanApp}-${resolved}`}
+                  key={`right-${overviewMax}-${tanApp}-${eurPerKgN}-${chartUnit}-${resolved}`}
                   yAxisId="right"
                   orientation="right"
                   stroke={colors.axis}
                   tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, overviewMax]}
-                  tickFormatter={(v: number) =>
-                    ((v * formData.tanApp) / 100).toFixed(1)
-                  }
-                  width={30}
+                  tickFormatter={(v: number) => {
+                    if (chartUnit === 'kgha') return pctToKgPerHa(v, tanApp).toFixed(1)
+                    return formatEur(pctToEurPerHa(v, tanApp, eurPerKgN), locale)
+                  }}
+                  width={chartUnit === 'eur' ? 44 : 36}
                 />
                 <XAxis dataKey="dayLabel" hide />
               </BarChart>
@@ -364,7 +471,7 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
           </div>
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-              {t('charts.nh3_loss_kgha')}
+              {chartUnit === 'eur' ? t('charts.nh3_loss_eur') : t('charts.nh3_loss_kgha')}
             </span>
           </div>
         </div>
@@ -548,11 +655,81 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
         </div>
       </div>
 
+      <CostSummaryCard data={data} formData={formData} hiddenValues={hiddenValues} />
+
       {overviewData.length > 0 && (
         <p className="text-xs text-slate-500 mt-2">
           {isTouch ? t('calculation.tip_tap') : t('calculation.tip_click')}
         </p>
       )}
     </>
+  )
+}
+
+interface CostSummaryCardProps {
+  data: ApiResponse
+  formData: FormData
+  hiddenValues: Set<string>
+}
+
+function CostSummaryCard({ data, formData, hiddenValues }: CostSummaryCardProps) {
+  const { t, i18n } = useTranslation()
+  const eurPerKgN = getEurPerKgN(formData)
+  const visibleSet = useMemo(() => {
+    const s = new Set(data.values.map((v) => String(v)))
+    for (const h of hiddenValues) s.delete(h)
+    return s
+  }, [data.values, hiddenValues])
+  const summary = computeCostSummary(data, formData.tanApp, eurPerKgN, formData.farmSizeHa, visibleSet)
+  if (!summary) return null
+  const variableName = data.variable
+  const bestLabel = variantLabel(t, variableName, summary.best.value)
+  const worstLabel = variantLabel(t, variableName, summary.worst.value)
+  const sameVariant = String(summary.best.value) === String(summary.worst.value)
+  const locale = i18n.language
+
+  return (
+    <div className="mt-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/40 p-3">
+      <div className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">
+        {t('costs.title_avg')}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+        <div>
+          <div className="text-[10px] text-slate-500 uppercase">{t('costs.best')}</div>
+          <div className="font-semibold text-emerald-600 dark:text-emerald-400">{bestLabel}</div>
+          <div className="text-xs text-slate-600 dark:text-slate-300">
+            {formatEur(summary.best.eurPerHa, locale)}/ha · {summary.best.avgPct.toFixed(1)}%
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 uppercase">{t('costs.worst')}</div>
+          <div className="font-semibold text-red-600 dark:text-red-400">{worstLabel}</div>
+          <div className="text-xs text-slate-600 dark:text-slate-300">
+            {formatEur(summary.worst.eurPerHa, locale)}/ha · {summary.worst.avgPct.toFixed(1)}%
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 uppercase">{t('costs.saving_pre')}</div>
+          {sameVariant ? (
+            <div className="text-xs text-slate-500">—</div>
+          ) : (
+            <>
+              <div className="font-semibold text-slate-900 dark:text-slate-100">
+                {formatEur(summary.savingPerHa, locale)}/ha
+              </div>
+              <div className="text-xs text-slate-600 dark:text-slate-300">
+                {t('costs.saving_by', { variant: bestLabel })}
+              </div>
+              {summary.savingPerYear !== undefined && summary.farmSizeHa && (
+                <div className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
+                  = {formatEur(summary.savingPerYear, locale)}/{t('costs.per_year_short')}
+                  {' '}({summary.farmSizeHa} {t('units.ha')})
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }

@@ -32,7 +32,11 @@
     "gesture_scroll_mac": "Use \u2318 + scroll to zoom"
   },
   "units": {
-    "kg_per_ha": "kg/ha"
+    "kg_per_ha": "kg/ha",
+    "eur_per_ha": "€/ha",
+    "eur_per_kg_n": "€/kg N",
+    "pct_tan": "% TAN",
+    "ha": "ha"
   },
   "home": {
     "tagline": "Predict ammonia losses. Compare strategies. Protect the climate and harvest more.",
@@ -59,7 +63,7 @@
     "alfam2_title": "Powered by ALFAM2",
     "alfam2_body_pre": "The",
     "alfam2_body_post": "model (Hafner et al.) is a semi-empirical model for predicting ammonia volatilisation from field-applied manure, developed from over 2,000 measurements across Europe. We gratefully acknowledge the ALFAM2 team for making their work openly available — without it, ammonitor would not be possible.",
-    "alfam2_version_info": "ALFAM2 v{{version}} · Parameter Set {{parsSet}}",
+    "alfam2_version_info": "ALFAM2 v{{version}} · param set {{parsSet}}",
     "info_open_source_title": "Open source",
     "info_open_source_body_pre": "Code available on",
     "info_open_source_body_post": "under AGPL-3.0. Inspect, fork, contribute.",
@@ -85,7 +89,7 @@
     "compare": "compare",
     "compare_hint": "Select a radio button to compare variants for that parameter",
     "tan_applied": "TAN applied",
-    "pars_set": "Set {{parsSet}}",
+    "pars_set": "param set {{parsSet}}",
     "varied": "varied",
     "incorporation": "Incorporation",
     "depth": "Depth",
@@ -98,6 +102,28 @@
   },
   "detail": {
     "incorp_marker": "Incorp ({{depth}}, {{hours}}h)"
+  },
+  "costs": {
+    "basis_title": "Cost basis",
+    "title_avg": "Cost summary (8-day average)",
+    "best": "Best",
+    "worst": "Worst",
+    "saving_pre": "Saving",
+    "saving_by": "by choosing {{variant}}",
+    "annual_saving": "= {{eur}}/year over {{ha}} ha",
+    "per_year_short": "year",
+    "prices_as_of": "Prices as of {{date}}",
+    "show_as": "Show as",
+    "calc_annual": "Calculate annual savings",
+    "farm_size": "Farm size (ha)"
+  },
+  "fertilizers": {
+    "label": "Fertilizer reference",
+    "can": "CAN (27% N)",
+    "urea": "Urea (46% N)",
+    "uan": "UAN (32% N)",
+    "ssa": "Ammonium sulfate (21% N)",
+    "custom": "Custom price"
   },
   "variables": {
     "app_mthd": "Application technique",
@@ -181,6 +207,7 @@
   "charts": {
     "nh3_loss_pct": "NH3 loss (% of TAN)",
     "nh3_loss_kgha": "NH3 loss (kg/ha)",
+    "nh3_loss_eur": "NH3 loss (€/ha)",
     "temp_wind_short": "Temp / Wind",
     "rain_short": "Rain (mm)",
     "avg_temp": "Avg temp (°C)",

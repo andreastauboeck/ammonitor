@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import {
   type ApiResponse,
+  type ChartUnit,
   type FormData,
   type WeatherPoint,
   type VariableName,
@@ -21,9 +22,20 @@ import {
 } from './types'
 import { useTheme } from '../theme/ThemeContext'
 import { getChartColors, type ChartColors } from '../theme/chartColors'
+import {
+  formatEur,
+  getEurPerKgN,
+  pctToEurPerHa,
+  pctToKgPerHa,
+} from '../lib/costs'
 
 function variantLabel(t: any, variable: VariableName, value: string | number): string {
   return t(`variants.${variable}.${value}`, { defaultValue: String(value) })
+}
+
+/** Convert a variant value to a Recharts-safe dataKey (no dots — Recharts treats dots as nested path access). */
+function valueToKey(value: string | number): string {
+  return String(value).replace(/\./g, '_')
 }
 
 interface EmissionTooltipProps {
@@ -34,8 +46,11 @@ interface EmissionTooltipProps {
   labelFormatter?: (l: any) => string
   valueKeys: string[]
   forceHide?: boolean
-  unit: string
   colors: ChartColors
+  chartUnit: ChartUnit
+  eurPerKgN: number
+  locale: string
+  kgUnitLabel: string
 }
 
 function EmissionTooltip({
@@ -46,8 +61,11 @@ function EmissionTooltip({
   labelFormatter,
   valueKeys,
   forceHide,
-  unit,
   colors,
+  chartUnit,
+  eurPerKgN,
+  locale,
+  kgUnitLabel,
 }: EmissionTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
@@ -76,10 +94,15 @@ function EmissionTooltip({
       <div style={{ fontWeight: 600 }}>{labelText}</div>
       {variantEntries.map((entry: any) => {
         const pct = entry.value as number
-        const kg = (pct * tanApp) / 100
+        const kg = pctToKgPerHa(pct, tanApp)
+        const eur = pctToEurPerHa(pct, tanApp, eurPerKgN)
+        const main = `${pct.toFixed(1)}%`
+        const secondary = chartUnit === 'kgha'
+          ? `${kg.toFixed(1)} ${kgUnitLabel}`
+          : `${formatEur(eur, locale)}/ha`
         return (
           <div key={entry.dataKey} style={{ color: entry.color }}>
-            {entry.name}: {pct.toFixed(1)}% ({kg.toFixed(1)} {unit})
+            {entry.name}: {main} ({secondary})
           </div>
         )
       })}
@@ -159,13 +182,18 @@ function makeTimeIso(d: Date): string {
 }
 
 export default function DetailChart({ data, day, formData }: DetailChartProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { resolved } = useTheme()
   const colors = getChartColors(resolved)
   const emissionScrollRef = useRef<HTMLDivElement>(null)
   const weatherScrollRef = useRef<HTMLDivElement>(null)
   const isSyncingRef = useRef(false)
   const isTouch = useIsTouch()
+  const eurPerKgN = getEurPerKgN(formData)
+  const chartUnit: ChartUnit = formData.chartUnit
+  const tanApp = formData.tanApp
+  const locale = i18n.language
+  const kgUnitLabel = t('units.kg_per_ha')
   const tooltipTrigger: 'click' | 'hover' = isTouch ? 'click' : 'hover'
   const [touchTooltipActive, setTouchTooltipActive] = useState(false)
   const autoDismissRef = useRef<ReturnType<typeof setTimeout>>()
@@ -206,7 +234,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   const dayData = data.days.find((d) => d.day === day)
   const variableName = data.variable
   const values = data.values
-  const valueKeys = values.map((v) => String(v))
+  const valueKeys = values.map((v) => valueToKey(v))
   const isAppTimeVariable = variableName === 'app_time'
 
   const variantOffsets = useMemo(() => {
@@ -245,11 +273,11 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     const byKey: Record<string, Record<string, any>> = {}
 
     for (const variant of dayData.variants) {
-      const key = String(variant.value)
+      const key = valueToKey(variant.value)
 
       let offset = 0
       if (isAppTimeVariable && variantOffsets) {
-        const vo = variantOffsets.find((v) => String(v.value) === key)
+        const vo = variantOffsets.find((v) => valueToKey(v.value) === key)
         offset = vo ? vo.offsetFromEarliest : 0
       }
 
@@ -434,6 +462,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   stroke={colors.axis}
                   tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, detailMax]}
+                  tickFormatter={(v: number) => v.toFixed(0)}
                   width={30}
                 />
                 <XAxis dataKey="hour" hide />
@@ -470,12 +499,15 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   wrapperStyle={isTouch && !touchTooltipActive ? { visibility: 'hidden' } : undefined}
                   content={
                     <EmissionTooltip
-                      tanApp={formData.tanApp}
+                      tanApp={tanApp}
                       labelFormatter={fmtLabel}
                       valueKeys={valueKeys}
                       forceHide={isTouch && !touchTooltipActive}
-                      unit={t('units.kg_per_ha')}
                       colors={colors}
+                      chartUnit={chartUnit}
+                      eurPerKgN={eurPerKgN}
+                      locale={locale}
+                      kgUnitLabel={kgUnitLabel}
                     />
                   }
                 />
@@ -483,7 +515,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   <Line
                     key={String(value)}
                     type="monotone"
-                    dataKey={String(value)}
+                    dataKey={valueToKey(value)}
                     name={variantLabel(t, variableName, value)}
                     yAxisId="left"
                     stroke={VARIANT_COLORS[i % VARIANT_COLORS.length]}
@@ -515,23 +547,24 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
         </div>
 
         <div className="flex shrink-0 h-full">
-          <div style={{ width: 30 }} className="h-full">
+          <div style={{ width: chartUnit === 'eur' ? 44 : 36 }} className="h-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={detailData}
                 margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
               >
                 <YAxis
-                  key={`detail-right-${detailMax}-${formData.tanApp}-${resolved}`}
+                  key={`detail-right-${detailMax}-${tanApp}-${eurPerKgN}-${chartUnit}-${resolved}`}
                   yAxisId="right"
                   orientation="right"
                   stroke={colors.axis}
                   tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, detailMax]}
-                  tickFormatter={(v: number) =>
-                    ((v * formData.tanApp) / 100).toFixed(1)
-                  }
-                  width={30}
+                  tickFormatter={(v: number) => {
+                    if (chartUnit === 'kgha') return pctToKgPerHa(v, tanApp).toFixed(1)
+                    return formatEur(pctToEurPerHa(v, tanApp, eurPerKgN), locale)
+                  }}
+                  width={chartUnit === 'eur' ? 44 : 36}
                 />
                 <XAxis dataKey="hour" hide />
               </LineChart>
@@ -539,7 +572,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           </div>
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-              {t('charts.nh3_loss_kgha')}
+              {chartUnit === 'eur' ? t('charts.nh3_loss_eur') : t('charts.nh3_loss_kgha')}
             </span>
           </div>
         </div>
