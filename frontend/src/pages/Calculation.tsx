@@ -20,6 +20,8 @@ import SettingsMenu from '../components/SettingsMenu'
 import SiteIcon from '../components/SiteIcon'
 import ShareButton from '../components/ShareButton'
 import UnitToggle from '../components/UnitToggle'
+import CostSummaryCard from '../components/CostSummaryCard'
+import {useHiddenValues} from '../lib/useHiddenValues'
 
 const VARIABLE_OPTIONS_BEFORE_INCORP: VariableName[] = [
   'app_mthd', 'app_time', 'man_dm',
@@ -125,6 +127,14 @@ export default function Calculation() {
   const [formData, setFormData] = useState<FormData>(() => deserializeForm(searchParams))
   const [showRadioHint, setShowRadioHint] = useState(false)
   const [showFarmSize, setShowFarmSize] = useState<boolean>(() => !!formData.farmSizeHa)
+
+  // Shared hidden-variant state for the overview chart legend and cost summary.
+  // Hook is called unconditionally; when no data has loaded yet, we pass the
+  // currently-selected variable + an empty values array.
+  const {hiddenValues, toggleValue} = useHiddenValues(
+    data?.variable ?? formData.variable,
+    data?.values ?? [],
+  )
 
   // Logo expansion: on hover (desktop) or when scrolled to top (touch devices).
   const [iconHover, setIconHover] = useState(false)
@@ -353,7 +363,7 @@ export default function Calculation() {
   return (
     <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
       <div className="sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 py-3">
-        <div className="max-w-full md:max-w-6xl mx-auto flex items-center gap-2">
+        <div className="flex items-center gap-2">
           {selectedDay !== null ? (
             <button
               onClick={() => navigate(`/calculate/${lat}/${lng}`)}
@@ -395,7 +405,7 @@ export default function Calculation() {
           </div>
         </div>
       </div>
-      <div className="max-w-full md:max-w-6xl mx-auto p-4 md:p-6">
+      <div className="p-4 md:p-6">
 
         <div className="mb-4 md:mb-6">
           {locationLoading ? (
@@ -413,9 +423,9 @@ export default function Calculation() {
           )}
         </div>
 
-        <div className="flex flex-col md:flex-row gap-4 md:gap-6">
-          {/* Form panel */}
-          <div className={`w-full md:w-1/3 lg:w-1/4 bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className="flex flex-col lg:grid lg:grid-cols-[18rem_minmax(0,1fr)_16rem] gap-4 lg:gap-6 items-stretch lg:h-[calc(100vh-11rem)] lg:min-h-[470px]">
+          {/* Form panel — fixed width on lg+, full width below */}
+          <div className={`w-full lg:w-auto lg:shrink-0 lg:min-h-0 lg:overflow-y-auto bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
             <div className="flex items-center gap-2 mb-3">
               <h2 className="text-lg font-semibold">{t('calculation.parameters')}</h2>
               <div className="ml-auto relative">
@@ -561,16 +571,138 @@ export default function Calculation() {
               ))}
             </div>
 
-            {/* Cost basis */}
-            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+          </div>
+
+          {/* Chart panel — grows to fill available space */}
+          <div className="w-full min-w-0 lg:min-h-0 bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700 flex flex-col">
+            {/* Up-arrow back-to-overview, only in detail view */}
+            {selectedDay !== null && (
+              <div className="flex justify-center mb-1">
+                <button
+                  onClick={() => navigate(`/calculate/${lat}/${lng}`)}
+                  className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                  aria-label={t('calculation.back_to_overview')}
+                  title={t('calculation.back_to_overview')}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                    <path fillRule="evenodd" d="M14.77 12.79a.75.75 0 01-1.06-.02L10 8.832l-3.71 3.938a.75.75 0 11-1.08-1.04l4.25-4.5a.75.75 0 011.08 0l4.25 4.5a.75.75 0 01-.02 1.06z" clipRule="evenodd" />
+                  </svg>
+                  {t('calculation.back_to_overview')}
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center mb-1">
+              {selectedDay !== null && (
+                <button
+                  onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.max(0, selectedDay - 1)}`, { replace: true })}
+                  disabled={selectedDay <= 0}
+                  className="p-2 mr-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
+                  aria-label="Previous day"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              )}
+              <h2 className="text-lg font-semibold flex-1 text-center">
+                {selectedDay === null
+                  ? t('calculation.overview_title', { variable: t(`variables.${formData.variable}`) })
+                  : t('calculation.detail_title', {
+                      date: selectedDayData ? formatDayLabel(selectedDayData.start, i18n.language) : '',
+                      variable: t(`variables.${formData.variable}`),
+                    })}
+              </h2>
+              {selectedDay !== null && (
+                <button
+                  onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.min((data?.days.length ?? 1) - 1, selectedDay + 1)}`, { replace: true })}
+                  disabled={!data || selectedDay >= data.days.length - 1}
+                  className="p-2 ml-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
+                  aria-label="Next day"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {alfam2Info && (
+              <p className="text-[9px] text-slate-400 dark:text-slate-600 text-center mb-2">
+                ALFAM2 v{alfam2Info.version} · {t('calculation.pars_set', { parsSet: alfam2Info.parsSet })}
+              </p>
+            )}
+
+            <div className="flex justify-end mb-2">
+              <UnitToggle
+                value={formData.chartUnit}
+                onChange={(u) => setFormData((prev) => ({ ...prev, chartUnit: u }))}
+              />
+            </div>
+
+            {error && (
+              <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm">
+                {t('common.error')}: {error}
+              </div>
+            )}
+
+            <div className="relative flex-1 min-h-[280px] h-[60vh] md:h-[calc(100vh-17rem)] lg:h-auto flex flex-col">
+              {loading && !data && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="relative w-12 h-12">
+                      <div className="absolute inset-0 rounded-full border-2 border-slate-300 dark:border-slate-600" />
+                      <div className="absolute inset-0 rounded-full border-2 border-t-emerald-500 dark:border-t-emerald-400 animate-spin" />
+                    </div>
+                    <span className="text-sm text-slate-500 dark:text-slate-400">{t('calculation.calculating')}</span>
+                  </div>
+                </div>
+              )}
+              {loading && data && (
+                <div className="absolute inset-0 z-20 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm flex items-center justify-center rounded-lg">
+                  <div className="relative w-8 h-8">
+                    <div className="absolute inset-0 rounded-full border-2 border-slate-300 dark:border-slate-600" />
+                    <div className="absolute inset-0 rounded-full border-2 border-t-emerald-500 dark:border-t-emerald-400 animate-spin" />
+                  </div>
+                </div>
+              )}
+              {data && selectedDay === null && (
+                <OverviewChart
+                  data={data}
+                  formData={formData}
+                  onDayClick={handleDayClick}
+                  hiddenValues={hiddenValues}
+                  toggleValue={toggleValue}
+                />
+              )}
+              {data && selectedDay !== null && (
+                <DetailChart
+                  data={data}
+                  day={selectedDay}
+                  formData={formData}
+                  hiddenValues={hiddenValues}
+                  toggleValue={toggleValue}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Cost panel — basis inputs + summary; fixed width on lg+, stacks below chart on smaller screens */}
+          <div className="w-full lg:w-auto lg:shrink-0 lg:min-h-0 lg:overflow-y-auto bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700 flex flex-col gap-4">
+            {/* Cost basis inputs */}
+            <div>
               <div className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">
                 {t('costs.basis_title')}
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
-                    {t('fertilizers.label')}
-                  </label>
+                  <div className="flex items-baseline justify-between gap-2 mb-1">
+                    <label className="block text-xs text-slate-600 dark:text-slate-400">
+                      {t('fertilizers.label')}
+                    </label>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                      {t('costs.prices_as_of', { date: FERTILIZER_PRICES_DATE })}
+                    </span>
+                  </div>
                   <select
                     value={formData.fertilizer}
                     onChange={(e) =>
@@ -649,102 +781,17 @@ export default function Calculation() {
                   )}
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2">
-                {t('costs.prices_as_of', { date: FERTILIZER_PRICES_DATE })}
-              </p>
-            </div>
-          </div>
-
-          {/* Chart panel */}
-          <div className="w-full md:w-2/3 lg:w-3/4 bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700">
-            <div className="flex items-center mb-3">
-              {selectedDay !== null && (
-                <button
-                  onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.max(0, selectedDay - 1)}`, { replace: true })}
-                  disabled={selectedDay <= 0}
-                  className="p-2 mr-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
-                  aria-label="Previous day"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                    <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              )}
-              <h2 className="text-lg font-semibold flex-1 text-center">
-                {selectedDay === null
-                  ? t('calculation.overview_title', { variable: t(`variables.${formData.variable}`) })
-                  : t('calculation.detail_title', {
-                      date: selectedDayData ? formatDayLabel(selectedDayData.start, i18n.language) : '',
-                      variable: t(`variables.${formData.variable}`),
-                    })}
-              </h2>
-              {alfam2Info && (
-                <span className="text-[10px] text-slate-400 dark:text-slate-600 ml-2 shrink-0 hidden sm:inline">
-                  ALFAM2 v{alfam2Info.version} · {t('calculation.pars_set', { parsSet: alfam2Info.parsSet })}
-                </span>
-              )}
-              {selectedDay !== null && (
-                <button
-                  onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.min((data?.days.length ?? 1) - 1, selectedDay + 1)}`, { replace: true })}
-                  disabled={!data || selectedDay >= data.days.length - 1}
-                  className="p-2 ml-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
-                  aria-label="Next day"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              )}
             </div>
 
-            <div className="flex justify-end mb-2">
-              <UnitToggle
-                value={formData.chartUnit}
-                onChange={(u) => setFormData((prev) => ({ ...prev, chartUnit: u }))}
+            {/* Cost summary */}
+            {data && (
+              <CostSummaryCard
+                data={data}
+                formData={formData}
+                hiddenValues={hiddenValues}
+                selectedDay={selectedDay}
               />
-            </div>
-
-            {error && (
-              <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm">
-                {t('common.error')}: {error}
-              </div>
             )}
-
-            <div className="relative h-64 md:h-[calc(100vh-18rem)] min-h-[320px] flex flex-col">
-              {loading && !data && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="relative w-12 h-12">
-                      <div className="absolute inset-0 rounded-full border-2 border-slate-300 dark:border-slate-600" />
-                      <div className="absolute inset-0 rounded-full border-2 border-t-emerald-500 dark:border-t-emerald-400 animate-spin" />
-                    </div>
-                    <span className="text-sm text-slate-500 dark:text-slate-400">{t('calculation.calculating')}</span>
-                  </div>
-                </div>
-              )}
-              {loading && data && (
-                <div className="absolute inset-0 z-20 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm flex items-center justify-center rounded-lg">
-                  <div className="relative w-8 h-8">
-                    <div className="absolute inset-0 rounded-full border-2 border-slate-300 dark:border-slate-600" />
-                    <div className="absolute inset-0 rounded-full border-2 border-t-emerald-500 dark:border-t-emerald-400 animate-spin" />
-                  </div>
-                </div>
-              )}
-              {data && selectedDay === null && (
-                <OverviewChart
-                  data={data}
-                  formData={formData}
-                  onDayClick={handleDayClick}
-                />
-              )}
-              {data && selectedDay !== null && (
-                <DetailChart
-                  data={data}
-                  day={selectedDay}
-                  formData={formData}
-                />
-              )}
-            </div>
           </div>
         </div>
       </div>

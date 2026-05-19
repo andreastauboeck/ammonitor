@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   BarChart,
@@ -23,7 +23,6 @@ import {
 import { useTheme } from '../theme/ThemeContext'
 import { getChartColors, type ChartColors } from '../theme/chartColors'
 import {
-  computeCostSummary,
   formatEur,
   getEurPerKgN,
   pctToEurPerHa,
@@ -141,9 +140,17 @@ interface OverviewChartProps {
   data: ApiResponse
   formData: FormData
   onDayClick: (day: number) => void
+  hiddenValues: Set<string>
+  toggleValue: (value: string) => void
 }
 
-export default function OverviewChart({ data, formData, onDayClick }: OverviewChartProps) {
+export default function OverviewChart({
+  data,
+  formData,
+  onDayClick,
+  hiddenValues,
+  toggleValue,
+}: OverviewChartProps) {
   const { t, i18n } = useTranslation()
   const { resolved } = useTheme()
   const colors = getChartColors(resolved)
@@ -161,53 +168,6 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
   const syncIdRef = useRef(`overview-${Math.random().toString(36).slice(2)}`)
   const [scrollTooltip, setScrollTooltip] = useState(false)
   const scrollDismissRef = useRef<ReturnType<typeof setTimeout>>()
-  const [hiddenValues, setHiddenValues] = useState<Set<string>>(() => {
-    try {
-      const stored = localStorage.getItem(`ammonitor-hidden-${variableName}`)
-      if (stored) return new Set(JSON.parse(stored) as string[])
-    } catch {}
-    return new Set()
-  })
-
-  // Reload hiddenValues from localStorage when the variable changes,
-  // so each variable has its own independent persisted hidden set.
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`ammonitor-hidden-${variableName}`)
-      setHiddenValues(stored ? new Set(JSON.parse(stored) as string[]) : new Set())
-    } catch {
-      setHiddenValues(new Set())
-    }
-  }, [variableName])
-
-  const toggleValue = useCallback((value: string) => {
-    setHiddenValues((prev) => {
-      const next = new Set(prev)
-      if (next.has(value)) {
-        next.delete(value)
-      } else {
-        // Count how many of the current values are actually visible, ignoring stale entries.
-        // Keep at least 2 variants visible so there's always something to compare.
-        const valueSet = new Set(values.map((v) => String(v)))
-        let visibleCount = 0
-        for (const v of valueSet) if (!prev.has(v)) visibleCount++
-        if (visibleCount <= 2) return prev
-        next.add(value)
-      }
-      return next
-    })
-  }, [values])
-
-  useEffect(() => {
-    try {
-      const key = `ammonitor-hidden-${variableName}`
-      if (hiddenValues.size > 0) {
-        localStorage.setItem(key, JSON.stringify([...hiddenValues]))
-      } else {
-        localStorage.removeItem(key)
-      }
-    } catch {}
-  }, [hiddenValues, variableName])
 
   const visibleValues = useMemo(
     () => values.filter((v) => !hiddenValues.has(String(v))),
@@ -531,7 +491,12 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
                 onClick={handleWeatherClick}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
-                <XAxis dataKey="dayLabel" stroke={colors.axis} tick={{ fontSize: 11, fill: colors.axis }} />
+                <XAxis
+                  dataKey="dayLabel"
+                  stroke={colors.axis}
+                  tick={{ fontSize: 11, fill: colors.axis }}
+                  scale="band"
+                />
                 <YAxis yAxisId="left" domain={[0, weatherLeftMax]} hide />
                 <YAxis yAxisId="right" orientation="right" domain={[0, weatherRightMax]} hide />
                 <Tooltip
@@ -655,81 +620,11 @@ export default function OverviewChart({ data, formData, onDayClick }: OverviewCh
         </div>
       </div>
 
-      <CostSummaryCard data={data} formData={formData} hiddenValues={hiddenValues} />
-
       {overviewData.length > 0 && (
         <p className="text-xs text-slate-500 mt-2">
           {isTouch ? t('calculation.tip_tap') : t('calculation.tip_click')}
         </p>
       )}
     </>
-  )
-}
-
-interface CostSummaryCardProps {
-  data: ApiResponse
-  formData: FormData
-  hiddenValues: Set<string>
-}
-
-function CostSummaryCard({ data, formData, hiddenValues }: CostSummaryCardProps) {
-  const { t, i18n } = useTranslation()
-  const eurPerKgN = getEurPerKgN(formData)
-  const visibleSet = useMemo(() => {
-    const s = new Set(data.values.map((v) => String(v)))
-    for (const h of hiddenValues) s.delete(h)
-    return s
-  }, [data.values, hiddenValues])
-  const summary = computeCostSummary(data, formData.tanApp, eurPerKgN, formData.farmSizeHa, visibleSet)
-  if (!summary) return null
-  const variableName = data.variable
-  const bestLabel = variantLabel(t, variableName, summary.best.value)
-  const worstLabel = variantLabel(t, variableName, summary.worst.value)
-  const sameVariant = String(summary.best.value) === String(summary.worst.value)
-  const locale = i18n.language
-
-  return (
-    <div className="mt-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/40 p-3">
-      <div className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">
-        {t('costs.title_avg')}
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-        <div>
-          <div className="text-[10px] text-slate-500 uppercase">{t('costs.best')}</div>
-          <div className="font-semibold text-emerald-600 dark:text-emerald-400">{bestLabel}</div>
-          <div className="text-xs text-slate-600 dark:text-slate-300">
-            {formatEur(summary.best.eurPerHa, locale)}/ha · {summary.best.avgPct.toFixed(1)}%
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] text-slate-500 uppercase">{t('costs.worst')}</div>
-          <div className="font-semibold text-red-600 dark:text-red-400">{worstLabel}</div>
-          <div className="text-xs text-slate-600 dark:text-slate-300">
-            {formatEur(summary.worst.eurPerHa, locale)}/ha · {summary.worst.avgPct.toFixed(1)}%
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] text-slate-500 uppercase">{t('costs.saving_pre')}</div>
-          {sameVariant ? (
-            <div className="text-xs text-slate-500">—</div>
-          ) : (
-            <>
-              <div className="font-semibold text-slate-900 dark:text-slate-100">
-                {formatEur(summary.savingPerHa, locale)}/ha
-              </div>
-              <div className="text-xs text-slate-600 dark:text-slate-300">
-                {t('costs.saving_by', { variant: bestLabel })}
-              </div>
-              {summary.savingPerYear !== undefined && summary.farmSizeHa && (
-                <div className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
-                  = {formatEur(summary.savingPerYear, locale)}/{t('costs.per_year_short')}
-                  {' '}({summary.farmSizeHa} {t('units.ha')})
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
   )
 }

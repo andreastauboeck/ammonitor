@@ -106,6 +106,7 @@
   "costs": {
     "basis_title": "Kostenbasis",
     "title_avg": "Kostenübersicht (8-Tage-Mittel)",
+    "title_day": "Kostenübersicht ({{date}})",
     "best": "Bestes",
     "worst": "Schlechtestes",
     "saving_pre": "Ersparnis",

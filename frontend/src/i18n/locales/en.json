@@ -106,6 +106,7 @@
   "costs": {
     "basis_title": "Cost basis",
     "title_avg": "Cost summary (8-day average)",
+    "title_day": "Cost summary ({{date}})",
     "best": "Best",
     "worst": "Worst",
     "saving_pre": "Saving",

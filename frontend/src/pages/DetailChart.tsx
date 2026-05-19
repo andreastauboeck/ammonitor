@@ -174,6 +174,8 @@ interface DetailChartProps {
   data: ApiResponse
   day: number
   formData: FormData
+  hiddenValues: Set<string>
+  toggleValue: (value: string) => void
 }
 
 function makeTimeIso(d: Date): string {
@@ -181,7 +183,7 @@ function makeTimeIso(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-export default function DetailChart({ data, day, formData }: DetailChartProps) {
+export default function DetailChart({ data, day, formData, hiddenValues, toggleValue }: DetailChartProps) {
   const { t, i18n } = useTranslation()
   const { resolved } = useTheme()
   const colors = getChartColors(resolved)
@@ -235,6 +237,14 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   const variableName = data.variable
   const values = data.values
   const valueKeys = values.map((v) => valueToKey(v))
+  const visibleValues = useMemo(
+    () => values.filter((v) => !hiddenValues.has(String(v))),
+    [values, hiddenValues],
+  )
+  const visibleValueKeys = useMemo(
+    () => visibleValues.map((v) => valueToKey(v)),
+    [visibleValues],
+  )
   const isAppTimeVariable = variableName === 'app_time'
 
   const variantOffsets = useMemo(() => {
@@ -330,13 +340,13 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   const detailMax = useMemo(() => {
     let m = 0
     for (const row of detailData as any[]) {
-      for (const k of valueKeys) {
+      for (const k of visibleValueKeys) {
         const v = (row[k] ?? 0) as number
         if (v > m) m = v
       }
     }
     return niceMax(m)
-  }, [detailData, valueKeys])
+  }, [detailData, visibleValueKeys])
 
   const weatherLeftMax = useMemo(() => {
     let m = 0
@@ -365,6 +375,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     if (variableName === 'incorp_time') {
       const markers: IncorpMarker[] = []
       values.forEach((value, i) => {
+        if (hiddenValues.has(String(value))) return
         const hour = typeof value === 'number' ? value : parseFloat(String(value))
         if (isNaN(hour) || hour < 0) return
         let xHour = hour === 0 ? 1 : hour
@@ -385,15 +396,18 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     const markerHour = targetHour === 0 ? 1 : targetHour
 
     if (isAppTimeVariable && variantOffsets) {
-      return values.map((value, i) => {
-        const offset = variantOffsets[i].offsetFromEarliest
-        return {
-          hour: markerHour + offset,
-          label: `${variantLabel(t, 'app_time', value)} — ${t('detail.incorp_marker', { depth: t(`variants.incorp_depth.${formData.incorpDepth}`), hours: formData.incorpTime })}`,
-          color: VARIANT_COLORS[i % VARIANT_COLORS.length],
-          hideLabel: true,
-        }
-      })
+      return values
+        .map((value, i) => ({ value, i }))
+        .filter(({ value }) => !hiddenValues.has(String(value)))
+        .map(({ value, i }) => {
+          const offset = variantOffsets[i].offsetFromEarliest
+          return {
+            hour: markerHour + offset,
+            label: `${variantLabel(t, 'app_time', value)} — ${t('detail.incorp_marker', { depth: t(`variants.incorp_depth.${formData.incorpDepth}`), hours: formData.incorpTime })}`,
+            color: VARIANT_COLORS[i % VARIANT_COLORS.length],
+            hideLabel: true,
+          }
+        })
     }
 
     const closest = (detailData as any[]).reduce((prev: any, curr: any) =>
@@ -405,7 +419,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
       label: t('detail.incorp_marker', { depth: t(`variants.incorp_depth.${formData.incorpDepth}`), hours: formData.incorpTime }),
       color: '#fbbf24',
     }]
-  }, [detailData, formData.incorpDepth, formData.incorpTime, variableName, values, isAppTimeVariable, variantOffsets, t])
+  }, [detailData, formData.incorpDepth, formData.incorpTime, variableName, values, isAppTimeVariable, variantOffsets, hiddenValues, t])
 
   const logTicks = useMemo(() => {
     const ticks = [1, 2, 4, 8, 24, 48, 96, 168]
@@ -429,17 +443,26 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
 
   return (
     <>
-      {/* Fixed legend for emission chart */}
+      {/* Fixed legend for emission chart (clickable to toggle visibility) */}
       <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-700 dark:text-slate-300 mb-1 shrink-0">
-        {values.map((value, i) => (
-          <span key={String(value)} className="inline-flex items-center gap-1">
-            <span
-              className="inline-block w-3 h-0.5"
-              style={{ backgroundColor: VARIANT_COLORS[i % VARIANT_COLORS.length] }}
-            />
-            {variantLabel(t, variableName, value)}
-          </span>
-        ))}
+        {values.map((value, i) => {
+          const hidden = hiddenValues.has(String(value))
+          const color = VARIANT_COLORS[i % VARIANT_COLORS.length]
+          return (
+            <button
+              key={String(value)}
+              type="button"
+              onClick={() => toggleValue(String(value))}
+              className={`inline-flex items-center gap-1 cursor-pointer select-none transition-opacity ${hidden ? 'opacity-30' : 'opacity-100'}`}
+            >
+              <span
+                className="inline-block w-3 h-0.5"
+                style={{ backgroundColor: color }}
+              />
+              {variantLabel(t, variableName, value)}
+            </button>
+          )
+        })}
       </div>
 
       {/* === EMISSION CHART === */}
@@ -511,20 +534,23 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                     />
                   }
                 />
-                {values.map((value, i) => (
-                  <Line
-                    key={String(value)}
-                    type="monotone"
-                    dataKey={valueToKey(value)}
-                    name={variantLabel(t, variableName, value)}
-                    yAxisId="left"
-                    stroke={VARIANT_COLORS[i % VARIANT_COLORS.length]}
-                    dot={false}
-                    strokeWidth={2}
-                    connectNulls
-                    activeDot={isTouch ? (touchTooltipActive ? { r: 4, strokeWidth: 0 } : false) : undefined}
-                  />
-                ))}
+                {visibleValues.map((value) => {
+                  const i = values.indexOf(value)
+                  return (
+                    <Line
+                      key={String(value)}
+                      type="monotone"
+                      dataKey={valueToKey(value)}
+                      name={variantLabel(t, variableName, value)}
+                      yAxisId="left"
+                      stroke={VARIANT_COLORS[i % VARIANT_COLORS.length]}
+                      dot={false}
+                      strokeWidth={2}
+                      connectNulls
+                      activeDot={isTouch ? (touchTooltipActive ? { r: 4, strokeWidth: 0 } : false) : undefined}
+                    />
+                  )
+                })}
                 {incorpMarkers.map((m) => (
                   <ReferenceLine
                     key={m.hour + '-' + m.color}
