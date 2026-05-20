@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   BarChart,
@@ -30,7 +30,8 @@ import {
 } from '../lib/costs'
 import { ciKey, valueToKey } from '../lib/rechartsKeys'
 import { variantLabel } from '../lib/variantLabel'
-import { useIsTouch } from '../lib/useIsTouch'
+import { useChartScroll } from '../lib/useChartScroll'
+import { useTouchTooltip } from '../lib/useTouchTooltip'
 import EmissionTooltip from './charts/EmissionTooltip'
 import WeatherTooltip from './charts/WeatherTooltip'
 import VariantLegend from './charts/VariantLegend'
@@ -59,18 +60,13 @@ export default function OverviewChart({
   const colors = getChartColors(resolved)
   const variableName = data.variable
   const values = data.values
-  const isTouch = useIsTouch()
+  const { active: scrollTooltip, touchStart } = useTouchTooltip(1200)
+  const { emissionRef, weatherRef, syncScroll, isTouch } = useChartScroll({ onScroll: () => touchStart() })
   const eurPerKgN = getEurPerKgN(formData)
   const chartUnit: ChartUnit = formData.chartUnit
   const tanApp = formData.tanApp
   const locale = i18n.language
   const kgUnitLabel = t('units.kg_per_ha')
-  const emissionScrollRef = useRef<HTMLDivElement>(null)
-  const weatherScrollRef = useRef<HTMLDivElement>(null)
-  const isSyncingRef = useRef(false)
-  const syncIdRef = useRef(`overview-${Math.random().toString(36).slice(2)}`)
-  const [scrollTooltip, setScrollTooltip] = useState(false)
-  const scrollDismissRef = useRef<ReturnType<typeof setTimeout>>()
 
   const visibleValues = useMemo(
     () => values.filter((v) => !hiddenValues.has(String(v))),
@@ -78,12 +74,6 @@ export default function OverviewChart({
   )
 
   const valueKeys = useMemo(() => values.map((v) => valueToKey(v)), [values])
-
-  useEffect(() => {
-    return () => {
-      if (scrollDismissRef.current) clearTimeout(scrollDismissRef.current)
-    }
-  }, [])
 
   const hasCiData = useMemo(() => {
     if (!ciVisibleValues || ciVisibleValues.size === 0) return false
@@ -145,21 +135,6 @@ export default function OverviewChart({
       const row = weatherOverviewData[e.activeTooltipIndex]
       if (row) onDayClick(row.day)
     }
-  }
-
-  const syncScroll = (source: 'emission' | 'weather') => () => {
-    if (isSyncingRef.current) return
-    if (isTouch) {
-      setScrollTooltip(true)
-      if (scrollDismissRef.current) clearTimeout(scrollDismissRef.current)
-      scrollDismissRef.current = setTimeout(() => setScrollTooltip(false), 1200)
-    }
-    const src = source === 'emission' ? emissionScrollRef.current : weatherScrollRef.current
-    const tgt = source === 'emission' ? weatherScrollRef.current : emissionScrollRef.current
-    if (!src || !tgt) return
-    isSyncingRef.current = true
-    tgt.scrollLeft = src.scrollLeft
-    requestAnimationFrame(() => { isSyncingRef.current = false })
   }
 
   const weatherOverviewData = useMemo(() => {
@@ -296,7 +271,7 @@ export default function OverviewChart({
         </div>
 
         {/* Middle scrollable column */}
-        <div ref={emissionScrollRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
+        <div ref={emissionRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[600px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -304,7 +279,6 @@ export default function OverviewChart({
                 margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
                 barCategoryGap="10%"
                 barGap={2}
-                syncId={syncIdRef.current}
                 onClick={handleEmissionClick}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
@@ -436,13 +410,12 @@ export default function OverviewChart({
           </div>
         </div>
 
-        <div ref={weatherScrollRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
+        <div ref={weatherRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[600px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={weatherOverviewData}
                 margin={{ top: 5, right: 0, left: 0, bottom: 5 }}
-                syncId={syncIdRef.current}
                 onClick={handleWeatherClick}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />

@@ -9,7 +9,6 @@ import 'leaflet-gesture-handling/dist/leaflet-gesture-handling.css'
 import { GestureHandling } from 'leaflet-gesture-handling'
 import SettingsMenu from '../components/SettingsMenu'
 
-// Register the gesture handler globally so MapContainer can opt-in via prop.
 ;(L.Map as any).addInitHook('addHandler', 'gestureHandling', GestureHandling)
 
 const customIcon = L.icon({
@@ -21,6 +20,22 @@ const customIcon = L.icon({
   shadowSize: [80, 80],
   shadowAnchor: [23, 80],
 })
+
+function MapGestureHandling() {
+  const map = useMap()
+  const { t } = useTranslation()
+  useEffect(() => {
+    if ((map as any).gestureHandling) {
+      ;(map as any).gestureHandlingOptions = {
+        touch: t('map.gesture_touch'),
+        scroll: t('map.gesture_scroll'),
+        scrollMac: t('map.gesture_scroll_mac'),
+      }
+      ;(map as any).gestureHandling.enable()
+    }
+  }, [map, t])
+  return null
+}
 
 interface BackendStatus {
   status: string
@@ -54,27 +69,6 @@ function MapClickHandler({ onLocationSelect }: { onLocationSelect: (loc: Locatio
       onLocationSelect({ lat: e.latlng.lat, lng: e.latlng.lng })
     },
   })
-  return null
-}
-
-function MapGestureHandling() {
-  const map = useMap()
-  const { t } = useTranslation()
-  useEffect(() => {
-    // If the map has the handler attached but it's not enabled, enable it.
-    // Also, we can set the custom text options here.
-    if ((map as any).gestureHandling) {
-      ;(map.options as any).gestureHandlingOptions = {
-        text: {
-          touch: t('map.gesture_touch'),
-          scroll: t('map.gesture_scroll'),
-          scrollMac: t('map.gesture_scroll_mac'),
-        },
-      }
-      ;(map as any).gestureHandling.disable()
-      ;(map as any).gestureHandling.enable()
-    }
-  }, [map, t])
   return null
 }
 
@@ -320,9 +314,10 @@ export default function Home() {
               <div className="mb-3">
                 <p className="text-[10px] text-slate-500 mb-1">{t('home.recent_locations')}</p>
                 <div className="flex flex-wrap gap-1">
-                  {savedLocations.map((loc, i) => {
+                  {savedLocations.map((loc) => {
                     const isEditing = editingTs === loc.ts
-                    const tone = i === 0
+                    const isSelected = location && Math.abs(loc.lat - location.lat) < 0.0001 && Math.abs(loc.lng - location.lng) < 0.0001
+                    const tone = isSelected
                       ? 'bg-emerald-100 border-emerald-400 text-emerald-700 hover:border-emerald-500 dark:bg-emerald-900/40 dark:border-emerald-700 dark:text-emerald-300 dark:hover:border-emerald-600'
                       : 'bg-slate-100 border-slate-300 text-slate-600 hover:border-slate-400 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-400 dark:hover:border-slate-500'
                     return (
@@ -394,34 +389,18 @@ export default function Home() {
             )}
 
             {location && (
-              <>
-                {/* Phone portrait: Calculate button sits right under recent locations */}
-                <div className="min-[750px]:hidden mb-4">
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3 text-center">
-                    <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
-                    {' '}{t('home.selected')}
-                  </p>
-                  <button
-                    onClick={handleStartCalculation}
-                    className="w-full px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition-colors font-semibold"
-                  >
-                    {t('home.start_button')} →
-                  </button>
-                </div>
-                {/* Desktop: Calculate button under search panel, beside the map */}
-                <div className="hidden min-[750px]:block">
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
-                    <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
-                    {' '}{t('home.selected')}
-                  </p>
-                  <button
-                    onClick={handleStartCalculation}
-                    className="px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition-colors font-semibold"
-                  >
-                    {t('home.start_button')} →
-                  </button>
-                </div>
-              </>
+              <div className="mb-4 min-[750px]:mb-0">
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-3 text-center min-[750px]:text-left">
+                  <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
+                  {' '}{t('home.selected')}
+                </p>
+                <button
+                  onClick={handleStartCalculation}
+                  className="w-full min-w-fit px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition-colors font-semibold"
+                >
+                  {t('home.start_button')} →
+                </button>
+              </div>
             )}
           </div>
 
@@ -431,7 +410,7 @@ export default function Home() {
               <MapContainer
                 center={[48.5, 10]}
                 zoom={4}
-                className="h-full w-full"
+                className="h-full w-full relative"
                 ref={mapRef}
               >
                 <MapGestureHandling />

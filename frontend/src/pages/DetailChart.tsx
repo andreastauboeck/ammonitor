@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   LineChart,
@@ -35,7 +35,8 @@ import {
   valueToKey,
 } from '../lib/rechartsKeys'
 import { variantLabel } from '../lib/variantLabel'
-import { useIsTouch } from '../lib/useIsTouch'
+import { useChartScroll } from '../lib/useChartScroll'
+import { useTouchTooltip } from '../lib/useTouchTooltip'
 import EmissionTooltip from './charts/EmissionTooltip'
 import WeatherTooltip from './charts/WeatherTooltip'
 import VariantLegend from './charts/VariantLegend'
@@ -81,50 +82,18 @@ export default function DetailChart({
   const { t, i18n } = useTranslation()
   const { resolved } = useTheme()
   const colors = getChartColors(resolved)
-  const emissionScrollRef = useRef<HTMLDivElement>(null)
-  const weatherScrollRef = useRef<HTMLDivElement>(null)
-  const isSyncingRef = useRef(false)
-  const isTouch = useIsTouch()
+  const { active: touchTooltipActive, touchStart, touchDismiss } = useTouchTooltip(4000)
+  const { emissionRef, weatherRef, syncScroll, isTouch } = useChartScroll({ onScroll: () => touchDismiss() })
   const eurPerKgN = getEurPerKgN(formData)
   const chartUnit: ChartUnit = formData.chartUnit
   const tanApp = formData.tanApp
   const locale = i18n.language
   const kgUnitLabel = t('units.kg_per_ha')
   const tooltipTrigger: 'click' | 'hover' = isTouch ? 'click' : 'hover'
-  const [touchTooltipActive, setTouchTooltipActive] = useState(false)
-  const autoDismissRef = useRef<ReturnType<typeof setTimeout>>()
-  const syncIdRef = useRef(`detail-${Math.random().toString(36).slice(2)}`)
 
   const handleChartClick = (e: any) => {
-    if (!isTouch) return
-    if (e && e.activeTooltipIndex != null) {
-      setTouchTooltipActive(true)
-      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
-      autoDismissRef.current = setTimeout(() => setTouchTooltipActive(false), 4000)
-    } else {
-      setTouchTooltipActive(false)
-      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
-    }
-  }
-
-  useEffect(() => {
-    return () => {
-      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
-    }
-  }, [])
-
-  const syncScroll = (source: 'emission' | 'weather') => () => {
-    if (isSyncingRef.current) return
-    if (isTouch && touchTooltipActive) {
-      setTouchTooltipActive(false)
-      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
-    }
-    const src = source === 'emission' ? emissionScrollRef.current : weatherScrollRef.current
-    const tgt = source === 'emission' ? weatherScrollRef.current : emissionScrollRef.current
-    if (!src || !tgt) return
-    isSyncingRef.current = true
-    tgt.scrollLeft = src.scrollLeft
-    requestAnimationFrame(() => { isSyncingRef.current = false })
+    if (e && e.activeTooltipIndex != null) touchStart()
+    else touchDismiss()
   }
 
   const dayData = data.days.find((d) => d.day === day)
@@ -461,13 +430,12 @@ export default function DetailChart({
           </div>
         </div>
 
-        <div ref={emissionScrollRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
+        <div ref={emissionRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[400px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={detailData}
                 margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
-                syncId={syncIdRef.current}
                 onClick={isTouch ? handleChartClick : undefined}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
@@ -654,13 +622,12 @@ export default function DetailChart({
           </div>
         </div>
 
-        <div ref={weatherScrollRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
+        <div ref={weatherRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[400px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={detailData}
                 margin={{ top: 5, right: 0, left: 0, bottom: 5 }}
-                syncId={syncIdRef.current}
                 onClick={isTouch ? handleChartClick : undefined}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />

@@ -33,6 +33,39 @@ const VARIABLE_OPTIONS_BEFORE_INCORP: VariableName[] = [
 ]
 const VARIABLE_OPTIONS_AFTER_INCORP: VariableName[] = ['man_source', 'man_ph']
 
+const VARIABLE_FORM_KEY: Record<VariableName, keyof FormData> = {
+  app_mthd: 'appMthd',
+  app_time: 'appTime',
+  man_dm: 'manDm',
+  man_ph: 'manPh',
+  man_source: 'manSource',
+  incorp_depth: 'incorpDepth',
+  incorp_time: 'incorpTime',
+}
+
+function DayNavButton({ direction, disabled, onClick }: {
+  direction: 'prev' | 'next'
+  disabled: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`p-2 ${direction === 'prev' ? 'mr-2' : 'ml-2'} rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors`}
+      aria-label={direction === 'prev' ? 'Previous day' : 'Next day'}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+        {direction === 'prev' ? (
+          <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+        ) : (
+          <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+        )}
+      </svg>
+    </button>
+  )
+}
+
 export default function Calculation() {
   const { t, i18n } = useTranslation()
   const { lat, lng, day } = useParams<{ lat: string; lng: string; day: string }>()
@@ -73,27 +106,17 @@ export default function Calculation() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const updateScrollState = () => {
+    const update = () => {
       setAtTop(window.scrollY <= 4)
       setHasScrollbar(document.documentElement.scrollHeight > window.innerHeight + 4)
     }
-    updateScrollState()
-    window.addEventListener('scroll', updateScrollState, { passive: true })
-    window.addEventListener('resize', updateScrollState)
-    const raf = requestAnimationFrame(updateScrollState)
+    update()
+    window.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
     return () => {
-      cancelAnimationFrame(raf)
-      window.removeEventListener('scroll', updateScrollState)
-      window.removeEventListener('resize', updateScrollState)
+      window.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
     }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    requestAnimationFrame(() => {
-      setHasScrollbar(document.documentElement.scrollHeight > window.innerHeight + 4)
-      setAtTop(window.scrollY <= 4)
-    })
   }, [data, loading, selectedDay, formData.variable, showFarmSize])
 
   const iconExpanded = iconHover || !hasScrollbar || atTop
@@ -308,31 +331,9 @@ export default function Calculation() {
                 <React.Fragment key={gi}>
                   {group.map((variable) => {
                     const isVariable = formData.variable === variable
-                    let currentValue: any = undefined
-                    let onChange: (value: any) => void = () => {}
-
-                    switch (variable) {
-                      case 'app_mthd':
-                        currentValue = formData.appMthd
-                        onChange = (v) => handleFixedChange('appMthd', v)
-                        break
-                      case 'app_time':
-                        currentValue = formData.appTime
-                        onChange = (v) => handleFixedChange('appTime', v)
-                        break
-                      case 'man_dm':
-                        currentValue = formData.manDm
-                        onChange = (v) => handleFixedChange('manDm', v)
-                        break
-                      case 'man_ph':
-                        currentValue = formData.manPh
-                        onChange = (v) => handleFixedChange('manPh', v)
-                        break
-                      case 'man_source':
-                        currentValue = formData.manSource
-                        onChange = (v) => handleFixedChange('manSource', v)
-                        break
-                    }
+                    const formKey = VARIABLE_FORM_KEY[variable]
+                    const currentValue = formData[formKey]
+                    const onChange = (v: any) => handleFixedChange(formKey, v)
 
                     return (
                       <div key={variable} className="flex items-center gap-2">
@@ -361,16 +362,9 @@ export default function Calculation() {
                       <div className="grid grid-cols-2 md:grid-cols-2 gap-2">
                         {(['incorp_depth', 'incorp_time'] as const).map((variable) => {
                           const isVariable = formData.variable === variable
-                          let currentValue: any
-                          let onChange: (value: any) => void
-
-                          if (variable === 'incorp_depth') {
-                            currentValue = formData.incorpDepth
-                            onChange = (v) => handleFixedChange('incorpDepth', v)
-                          } else {
-                            currentValue = formData.incorpTime
-                            onChange = (v) => handleFixedChange('incorpTime', v)
-                          }
+                          const formKey = VARIABLE_FORM_KEY[variable]
+                          const currentValue = formData[formKey]
+                          const onChange = (v: any) => handleFixedChange(formKey, v)
 
                           return (
                             <div key={variable} className="flex items-center gap-1">
@@ -422,16 +416,11 @@ export default function Calculation() {
 
             <div className="flex items-center mb-1">
               {selectedDay !== null && (
-                <button
+                <DayNavButton
+                  direction="prev"
                   onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.max(0, selectedDay - 1)}`, { replace: true })}
                   disabled={selectedDay <= 0}
-                  className="p-2 mr-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
-                  aria-label="Previous day"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                    <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
-                  </svg>
-                </button>
+                />
               )}
               <h2 className="text-lg font-semibold flex-1 text-center">
                 {selectedDay === null
@@ -442,16 +431,11 @@ export default function Calculation() {
                     })}
               </h2>
               {selectedDay !== null && (
-                <button
+                <DayNavButton
+                  direction="next"
                   onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.min((data?.days.length ?? 1) - 1, selectedDay + 1)}`, { replace: true })}
                   disabled={!data || selectedDay >= data.days.length - 1}
-                  className="p-2 ml-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
-                  aria-label="Next day"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-                  </svg>
-                </button>
+                />
               )}
             </div>
             {alfam2Info && (
