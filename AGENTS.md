@@ -4,7 +4,7 @@
 
 Ammonia (NH3) emission prediction and monitoring decision-support tool for agriculture. Uses the ALFAM2 model (R package) driven by weather forecasts (Open-Meteo) to predict NH3 loss from manure application across 8 days, comparing variants of application parameters.
 
-**Version:** See `VERSION` file at repo root (currently `0.3.0`)
+**Version:** See `VERSION` file at repo root (currently `0.4.0`)
 
 **Tech stack:** Python 3 / FastAPI / R (ALFAM2) / React 18 / TypeScript / Tailwind CSS / Recharts / Leaflet / i18next / Docker / Fly.io
 
@@ -168,7 +168,7 @@ The response does not echo a `value`/`variable`. The frontend knows which varian
 
 ### `GET /api/status`
 
-Returns `{"status": "ok", "version": "0.3.0", "environment": "production"}`
+Returns `{"status": "ok", "version": "0.4.0", "environment": "production"}`
 
 ---
 

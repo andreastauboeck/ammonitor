@@ -21,7 +21,26 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from run_alfam2 import run_alfam2, run_alfam2_single
 from weather import fetch_weather
 
-VERSION = os.getenv("VERSION", "0.1.0")
+def _read_version() -> str:
+    """Read version from the repo-root VERSION file.
+
+    Resolution order:
+      1. VERSION alongside main.py (Docker: /app/VERSION)
+      2. VERSION one level up (local dev: backend/../VERSION)
+      3. VERSION env-var (CI / docker-compose override)
+      4. "dev" fallback
+    """
+    try:
+        current = Path(__file__).resolve()
+        for base in (current.parent, current.parent.parent):
+            v_path = base / "VERSION"
+            if v_path.is_file():
+                return v_path.read_text().strip()
+    except OSError:
+        pass
+    return os.getenv("VERSION", "dev")
+
+VERSION = _read_version()
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
 
 logger = logging.getLogger("ammonitor")
@@ -37,7 +56,7 @@ def _setup_sentry() -> None:
     if not dsn:
         return
     try:
-        import sentry_sdk
+        import sentry_sdk  # pylint: disable=import-outside-toplevel
         sentry_sdk.init(
             dsn=dsn,
             environment=ENVIRONMENT,
@@ -46,7 +65,7 @@ def _setup_sentry() -> None:
             send_default_pii=False,
         )
         logger.info("Sentry initialized environment=%s release=%s", ENVIRONMENT, VERSION)
-    except Exception:
+    except (ImportError, RuntimeError):
         logger.warning("Failed to initialize Sentry", exc_info=True)
 
 
@@ -61,7 +80,7 @@ def _get_alfam2_info() -> tuple[str, str]:
             capture_output=True, text=True, timeout=30, check=False,
         )
         alfam2_version = ver_proc.stdout.strip() if ver_proc.returncode == 0 else "unknown"
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         alfam2_version = "unknown"
 
     try:
@@ -73,7 +92,7 @@ def _get_alfam2_info() -> tuple[str, str]:
             capture_output=True, text=True, timeout=30, check=False,
         )
         alfam2_pars_set = pars_proc.stdout.strip() if pars_proc.returncode == 0 else "3"
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         alfam2_pars_set = "3"
 
     return alfam2_version, alfam2_pars_set
@@ -408,14 +427,19 @@ def calculate_ci(input_data: CalculateCiInput) -> dict:
 
     # Single day in result; pick its single variant. Drop the
     # placeholder `value` field (frontend tracks the variant locally).
-    day = result["days"][0] if result["days"] else None
-    variant = day["variants"][0] if day and day["variants"] else None
-    if variant is not None and "value" in variant:
-        variant = {k: v for k, v in variant.items() if k != "value"}
+    day_data: dict | None = result["days"][0] if result["days"] else None
+    if day_data is not None:
+        variant = day_data["variants"][0] if day_data["variants"] else None
+        if variant is not None and "value" in variant:
+            variant = {k: v for k, v in variant.items() if k != "value"}
+        start = day_data["start"]
+    else:
+        variant = None
+        start = ""
 
     return {
         "day": day_idx,
-        "start": day["start"] if day else "",
+        "start": start,
         "variant": variant,
     }
 

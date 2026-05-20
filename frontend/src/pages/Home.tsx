@@ -489,7 +489,7 @@ export default function Home() {
         </div>
 
         {/* ── Footer ── */}
-      <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+      <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 sticky bottom-0 z-10">
         <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
           {version && <span className="px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400">v{version}</span>}
           <span>AGPL-3.0</span>

@@ -7,5 +7,4 @@ services:
       - ./.env
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-dev}
-      - VERSION=${VERSION:-development}
     restart: unless-stopped
