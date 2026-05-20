@@ -10,7 +10,7 @@ export default function LanguageSwitcher() {
   const current = i18n.resolvedLanguage || i18n.language || 'en'
 
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-md bg-slate-800/60 border border-slate-700 p-0.5 text-xs">
+    <div className="inline-flex items-center gap-0.5 rounded-md bg-slate-100 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 p-0.5 text-xs">
       {LANGUAGES.map((lang) => (
         <button
           key={lang.code}
@@ -18,8 +18,8 @@ export default function LanguageSwitcher() {
           onClick={() => i18n.changeLanguage(lang.code)}
           className={`px-2 py-0.5 rounded transition-colors ${
             current === lang.code
-              ? 'bg-emerald-500/20 text-emerald-300'
-              : 'text-slate-400 hover:text-slate-200'
+              ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
           }`}
           aria-pressed={current === lang.code}
         >

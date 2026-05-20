@@ -9,14 +9,45 @@
     "en": "English",
     "de": "Deutsch"
   },
+  "theme": {
+    "light": "Hell",
+    "dark": "Dunkel",
+    "system": "System"
+  },
+  "settings": {
+    "label": "Einstellungen",
+    "theme": "Thema",
+    "language": "Sprache"
+  },
+  "share": {
+    "label": "Teilen",
+    "text_default": "Ammoniak-Emissionsvorhersage",
+    "text_with_subject": "Ammoniak-Emissionsvorhersage für {{subject}}",
+    "copied": "Link kopiert",
+    "error": "Teilen nicht möglich. Bitte URL aus der Adresszeile kopieren."
+  },
+  "map": {
+    "gesture_touch": "Zwei Finger zum Bewegen verwenden",
+    "gesture_scroll": "Strg + Scrollen zum Zoomen",
+    "gesture_scroll_mac": "\u2318 + Scrollen zum Zoomen"
+  },
   "units": {
-    "kg_per_ha": "kg/ha"
+    "kg_per_ha": "kg/ha",
+    "eur_per_ha": "€/ha",
+    "eur_per_kg_n": "€/kg N",
+    "pct_tan": "% TAN",
+    "ha": "ha"
   },
   "home": {
     "tagline": "Ammoniak-Verluste vorhersagen. Strategien vergleichen. Klima schützen und mehr ernten.",
     "subtitle": "Wählen Sie ein Feld auf der Karte oder suchen Sie einen Standort, dann starten Sie eine Berechnung.",
     "search_placeholder": "Adresse eingeben…",
     "search_button": "Suchen",
+    "gps_button": "Meinen Standort verwenden",
+    "recent_locations": "Letzte Standorte",
+    "delete_location": "Aus Verlauf entfernen",
+    "rename_location": "Umbenennen",
+    "save_name": "Name speichern",
     "map_data": "Kartendaten",
     "selected": "ausgewählt",
     "start_button": "Berechnung starten",
@@ -32,6 +63,7 @@
     "alfam2_title": "Angetrieben von ALFAM2",
     "alfam2_body_pre": "Das",
     "alfam2_body_post": "-Modell (Hafner et al.) ist ein semi-empirisches Modell zur Vorhersage der Ammoniakverflüchtigung aus feldausgebrachter Gülle, entwickelt aus über 2.000 Messungen in ganz Europa. Wir danken dem ALFAM2-Team, das seine Arbeit offen zugänglich gemacht hat — ohne sie wäre ammonitor nicht möglich.",
+    "alfam2_version_info": "ALFAM2 v{{version}} · param set {{parsSet}}",
     "info_open_source_title": "Open Source",
     "info_open_source_body_pre": "Code verfügbar auf",
     "info_open_source_body_post": "unter AGPL-3.0. Einsehen, forken, mitwirken.",
@@ -57,6 +89,7 @@
     "compare": "vergleichen",
     "compare_hint": "Wählen Sie einen Optionsschalter, um Varianten dieses Parameters zu vergleichen",
     "tan_applied": "TAN-Gabe",
+    "pars_set": "param set {{parsSet}}",
     "varied": "variiert",
     "incorporation": "Einarbeitung",
     "depth": "Tiefe",
@@ -69,6 +102,29 @@
   },
   "detail": {
     "incorp_marker": "Einarb. ({{depth}}, {{hours}} h)"
+  },
+  "costs": {
+    "basis_title": "Kostenbasis",
+    "title_avg": "Kostenübersicht (8-Tage-Mittel)",
+    "title_day": "Kostenübersicht ({{date}})",
+    "best": "Bestes",
+    "worst": "Schlechtestes",
+    "saving_pre": "Ersparnis",
+    "saving_by": "durch Wahl von {{variant}}",
+    "annual_saving": "= {{eur}}/Jahr bei {{ha}} ha",
+    "per_year_short": "Jahr",
+    "prices_as_of": "Preise per {{date}}",
+    "show_as": "Anzeigen als",
+    "calc_annual": "Jährliche Ersparnis berechnen",
+    "farm_size": "Betriebsgröße (ha)"
+  },
+  "fertilizers": {
+    "label": "Düngerreferenz",
+    "can": "Kalkammonsalpeter (KAS, 27% N)",
+    "urea": "Harnstoff (46% N)",
+    "uan": "AHL (32% N)",
+    "ssa": "Ammonsulfatsalpeter (21% N)",
+    "custom": "Eigener Preis"
   },
   "variables": {
     "app_mthd": "Ausbringtechnik",
@@ -152,6 +208,7 @@
   "charts": {
     "nh3_loss_pct": "NH3-Verlust (% des TAN)",
     "nh3_loss_kgha": "NH3-Verlust (kg/ha)",
+    "nh3_loss_eur": "NH3-Verlust (€/ha)",
     "temp_wind_short": "Temp / Wind",
     "rain_short": "Regen (mm)",
     "avg_temp": "Ø Temp (°C)",
@@ -159,7 +216,11 @@
     "avg_rain": "Tagesregen (mm)",
     "air_temp": "Lufttemp (°C)",
     "wind": "Wind (km/h)",
-    "rain": "Regen (mm)"
+    "rain": "Regen (mm)",
+    "fetch_ci": "95%-Konfidenzintervall berechnen (Bootstrap n=100)",
+    "refetch_ci": "95%-Konfidenzintervall neu berechnen",
+    "show_ci": "95%-Konfidenzintervall anzeigen",
+    "hide_ci": "95%-Konfidenzintervall ausblenden"
   },
   "time": {
     "hours_short": "{{n}} h",
@@ -199,7 +260,8 @@
     "tp_nominatim": "Wenn Sie nach einer Adresse suchen, wird Ihre Suchanfrage an den Nominatim-Geokodierungsdienst der OpenStreetMap Foundation gesendet. Siehe <1>OSMF-Datenschutzerklärung</1>.",
     "tp_openmeteo": "Wettervorhersagedaten werden basierend auf den von Ihnen ausgewählten Koordinaten von Open-Meteo abgerufen. Siehe <1>Open-Meteo-Bedingungen</1>.",
     "tp_osm_tiles": "Kartenkacheln werden zur Anzeige der Karte von OpenStreetMap-Servern geladen. IP-Adressen können vom Tile-Server protokolliert werden. Siehe <1>OSMF-Datenschutzerklärung</1>.",
-    "tp_goatcounter": "Wir verwenden <1>GoatCounter</1>, einen datenschutzfreundlichen Webanalysedienst. GoatCounter verwendet keine Cookies, erfasst keine personenbezogenen Daten und verfolgt Nutzer nicht über Seiten hinweg. Es werden nur anonymisierte Seitenaufrufe gezählt. Siehe <2>GoatCounter-Datenschutzerklärung</2>.",
+    "tp_goatcounter": "Ein datenschutzfreundlicher Webanalysedienst. Keine Cookies, keine personenbezogenen Daten, kein seitenübergreifendes Tracking. Es werden nur anonymisierte Seitenaufrufe gezählt. Siehe <1>GoatCounter-Datenschutzerklärung</1>.",
+    "tp_sentry": "Fehlerüberwachungsdienst (Sentry Inc., USA). Bei Auftreten eines Fehlers erhält Sentry Fehlermeldungen, Stack Traces und zugehörige Metadaten. Sentry kann IP-Adressen zu Debugging-Zwecken erfassen. Siehe <1>Sentry-Datenschutzerklärung</1>.",
     "logs_title": "Server-Logs",
     "logs_body": "Unser Hosting-Anbieter (Fly.io) kann technische Zugriffsdaten (IP-Adresse, Zeitstempel, angeforderte URL) im Rahmen des standardmäßigen Infrastrukturbetriebs protokollieren. Diese Logs sind für uns nicht zugänglich und werden nicht zum Tracking oder zur Profilbildung verwendet.",
     "rights_title": "Ihre Rechte",

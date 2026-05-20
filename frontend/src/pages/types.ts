@@ -42,6 +42,10 @@ export interface ApiResponse {
   weather: WeatherPoint[]
 }
 
+export type FertilizerId = 'can' | 'urea' | 'uan' | 'ssa' | 'custom'
+
+export type ChartUnit = 'kgha' | 'eur'
+
 export interface FormData {
   tanApp: number
   variable: VariableName
@@ -52,6 +56,14 @@ export interface FormData {
   appTime: number
   incorpTime: number
   incorpDepth: 'none' | 'shallow' | 'deep'
+  /** Fertilizer reference for €/kg N derivation. */
+  fertilizer: FertilizerId
+  /** Custom €/kg N price. Only used when fertilizer === 'custom'. */
+  customEurPerKgN: number
+  /** Optional farm size in hectares for annual saving multiplier. */
+  farmSizeHa?: number
+  /** Active chart unit toggle. */
+  chartUnit: ChartUnit
 }
 
 export const VARIANT_COLORS = [
@@ -129,16 +141,35 @@ export const VARIANT_DEFS: Record<VariableName, VariantDef[]> = {
 
 export const TAN_PRESETS = [20, 30, 40, 50, 60, 70, 80, 100, 120, 150]
 
+/**
+ * Reference fertilizer prices for translating ammonia loss into €/ha.
+ * Values are €/kg N. Update both the prices and FERTILIZER_PRICES_DATE
+ * together when refreshing reference prices.
+ */
+export const FERTILIZER_PRESETS: Record<FertilizerId, { id: FertilizerId; eurPerKgN: number }> = {
+  can:    { id: 'can',    eurPerKgN: 1.30 },  // CAN/KAS 27% N @ ~€350/t
+  urea:   { id: 'urea',   eurPerKgN: 0.98 },  // Urea 46% N @ ~€450/t
+  uan:    { id: 'uan',    eurPerKgN: 1.19 },  // UAN/AHL 32% N @ ~€380/t
+  ssa:    { id: 'ssa',    eurPerKgN: 1.29 },  // SSA/ASS 21% N @ ~€270/t
+  custom: { id: 'custom', eurPerKgN: 1.30 },
+}
+
+export const FERTILIZER_PRICES_DATE = '2026-04'
+
 export const DEFAULT_FORM_DATA: FormData = {
   tanApp: 60,
   variable: 'app_mthd',
-  appMthd: 'th',
+  appMthd: 'bc',
   manDm: 6,
   manPh: 7.5,
   manSource: 'cattle',
   appTime: 12,
   incorpTime: 0,
   incorpDepth: 'none',
+  fertilizer: 'can',
+  customEurPerKgN: 1.30,
+  farmSizeHa: undefined,
+  chartUnit: 'kgha',
 }
 
 /** Format a date string (ISO) using the active i18n locale. */

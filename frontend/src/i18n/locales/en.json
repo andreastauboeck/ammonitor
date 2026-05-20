@@ -9,14 +9,45 @@
     "en": "English",
     "de": "Deutsch"
   },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "settings": {
+    "label": "Settings",
+    "theme": "Theme",
+    "language": "Language"
+  },
+  "share": {
+    "label": "Share",
+    "text_default": "Ammonia emission forecast",
+    "text_with_subject": "Ammonia emission forecast for {{subject}}",
+    "copied": "Link copied",
+    "error": "Could not share. Copy the URL from the address bar."
+  },
+  "map": {
+    "gesture_touch": "Use two fingers to move the map",
+    "gesture_scroll": "Use Ctrl + scroll to zoom",
+    "gesture_scroll_mac": "Use \u2318 + scroll to zoom"
+  },
   "units": {
-    "kg_per_ha": "kg/ha"
+    "kg_per_ha": "kg/ha",
+    "eur_per_ha": "€/ha",
+    "eur_per_kg_n": "€/kg N",
+    "pct_tan": "% TAN",
+    "ha": "ha"
   },
   "home": {
     "tagline": "Predict ammonia losses. Compare strategies. Protect the climate and harvest more.",
     "subtitle": "Select a field on the map or search for a location, then start a calculation.",
     "search_placeholder": "Enter address…",
     "search_button": "Search",
+    "gps_button": "Use my location",
+    "recent_locations": "Recent locations",
+    "delete_location": "Remove from recents",
+    "rename_location": "Rename",
+    "save_name": "Save name",
     "map_data": "Map data",
     "selected": "selected",
     "start_button": "Start Calculation",
@@ -32,6 +63,7 @@
     "alfam2_title": "Powered by ALFAM2",
     "alfam2_body_pre": "The",
     "alfam2_body_post": "model (Hafner et al.) is a semi-empirical model for predicting ammonia volatilisation from field-applied manure, developed from over 2,000 measurements across Europe. We gratefully acknowledge the ALFAM2 team for making their work openly available — without it, ammonitor would not be possible.",
+    "alfam2_version_info": "ALFAM2 v{{version}} · param set {{parsSet}}",
     "info_open_source_title": "Open source",
     "info_open_source_body_pre": "Code available on",
     "info_open_source_body_post": "under AGPL-3.0. Inspect, fork, contribute.",
@@ -57,6 +89,7 @@
     "compare": "compare",
     "compare_hint": "Select a radio button to compare variants for that parameter",
     "tan_applied": "TAN applied",
+    "pars_set": "param set {{parsSet}}",
     "varied": "varied",
     "incorporation": "Incorporation",
     "depth": "Depth",
@@ -69,6 +102,29 @@
   },
   "detail": {
     "incorp_marker": "Incorp ({{depth}}, {{hours}}h)"
+  },
+  "costs": {
+    "basis_title": "Cost basis",
+    "title_avg": "Cost summary (8-day average)",
+    "title_day": "Cost summary ({{date}})",
+    "best": "Best",
+    "worst": "Worst",
+    "saving_pre": "Saving",
+    "saving_by": "by choosing {{variant}}",
+    "annual_saving": "= {{eur}}/year over {{ha}} ha",
+    "per_year_short": "year",
+    "prices_as_of": "Prices as of {{date}}",
+    "show_as": "Show as",
+    "calc_annual": "Calculate annual savings",
+    "farm_size": "Farm size (ha)"
+  },
+  "fertilizers": {
+    "label": "Fertilizer reference",
+    "can": "CAN (27% N)",
+    "urea": "Urea (46% N)",
+    "uan": "UAN (32% N)",
+    "ssa": "Ammonium sulfate (21% N)",
+    "custom": "Custom price"
   },
   "variables": {
     "app_mthd": "Application technique",
@@ -152,6 +208,7 @@
   "charts": {
     "nh3_loss_pct": "NH3 loss (% of TAN)",
     "nh3_loss_kgha": "NH3 loss (kg/ha)",
+    "nh3_loss_eur": "NH3 loss (€/ha)",
     "temp_wind_short": "Temp / Wind",
     "rain_short": "Rain (mm)",
     "avg_temp": "Avg temp (°C)",
@@ -159,7 +216,11 @@
     "avg_rain": "Daily rain (mm)",
     "air_temp": "Air temp (°C)",
     "wind": "Wind (km/h)",
-    "rain": "Rain (mm)"
+    "rain": "Rain (mm)",
+    "fetch_ci": "Compute 95% confidence interval (bootstrap n=100)",
+    "refetch_ci": "Recompute 95% confidence interval",
+    "show_ci": "Show 95% confidence interval",
+    "hide_ci": "Hide 95% confidence interval"
   },
   "time": {
     "hours_short": "{{n}}h",
@@ -199,7 +260,8 @@
     "tp_nominatim": "If you search for an address, your search query is sent to the Nominatim geocoding service operated by the OpenStreetMap Foundation. See <1>OSMF privacy policy</1>.",
     "tp_openmeteo": "Weather forecast data is fetched from Open-Meteo based on the coordinates you select. See <1>Open-Meteo terms</1>.",
     "tp_osm_tiles": "Map tiles are loaded from OpenStreetMap servers to display the map. IP addresses may be logged by the tile server. See <1>OSMF privacy policy</1>.",
-    "tp_goatcounter": "We use <1>GoatCounter</1>, a privacy-friendly web analytics service. GoatCounter does not use cookies, does not collect personal data, and does not track users across sites. Only anonymized page views are counted. See <2>GoatCounter privacy policy</2>.",
+    "tp_goatcounter": "A privacy-friendly web analytics service. No cookies, no personal data, no cross-site tracking. Only anonymized page views are counted. See <1>GoatCounter privacy policy</1>.",
+    "tp_sentry": "Error monitoring service (Sentry Inc., USA). When an error occurs, Sentry receives error messages, stack traces, and related metadata. Sentry may collect IP addresses for debugging purposes. See <1>Sentry privacy policy</1>.",
     "logs_title": "Server logs",
     "logs_body": "Our hosting provider (Fly.io) may log technical access data (IP address, timestamp, requested URL) as part of standard infrastructure operations. These logs are not accessible to us and are not used for tracking or profiling.",
     "rights_title": "Your rights",
