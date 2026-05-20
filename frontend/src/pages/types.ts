@@ -10,11 +10,15 @@ export type VariableName =
 export interface HourlyPoint {
   hour: number
   er: number
+  er_lwr?: number
+  er_upr?: number
 }
 
 export interface VariantResult {
   value: string | number
   final_loss_pct: number
+  final_loss_lwr?: number
+  final_loss_upr?: number
   hourly: HourlyPoint[]
 }
 

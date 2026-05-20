@@ -1,9 +1,7 @@
-import React, {useCallback, useEffect, useState} from 'react'
-import {useTranslation} from 'react-i18next'
-import {Link, useNavigate, useParams, useSearchParams} from 'react-router-dom'
+import React, { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  type ApiResponse,
-  DEFAULT_FORM_DATA,
   type FertilizerId,
   FERTILIZER_PRESETS,
   FERTILIZER_PRICES_DATE,
@@ -12,7 +10,6 @@ import {
   TAN_PRESETS,
   type VariableName,
   VARIANT_DEFS,
-  type VariantDef,
 } from './types'
 import OverviewChart from './OverviewChart'
 import DetailChart from './DetailChart'
@@ -21,92 +18,52 @@ import SiteIcon from '../components/SiteIcon'
 import ShareButton from '../components/ShareButton'
 import UnitToggle from '../components/UnitToggle'
 import CostSummaryCard from '../components/CostSummaryCard'
-import {useHiddenValues} from '../lib/useHiddenValues'
+import { useHiddenValues } from '../lib/useHiddenValues'
+import { useCalculation } from '../lib/useCalculation'
+import { useCiFetcher } from '../lib/useCiFetcher'
+import { useReverseGeocode } from '../lib/useReverseGeocode'
+import { variantLabel } from '../lib/variantLabel'
+import { deserializeForm, useFormUrlSync } from '../lib/formUrlSync'
+import { applyFixedChange, applyVariableChange } from '../lib/formCascade'
 
 const VARIABLE_OPTIONS_BEFORE_INCORP: VariableName[] = [
-  'app_mthd', 'app_time', 'man_dm',
+  'app_mthd',
+  'app_time',
+  'man_dm',
 ]
-const VARIABLE_OPTIONS_AFTER_INCORP: VariableName[] = [
-  'man_source', 'man_ph',
-]
+const VARIABLE_OPTIONS_AFTER_INCORP: VariableName[] = ['man_source', 'man_ph']
 
-const ALL_VARIABLES: VariableName[] = [
-  'app_mthd', 'app_time', 'man_dm', 'man_ph',
-  'incorp_depth', 'incorp_time', 'man_source',
-]
-
-const FERT_IDS: FertilizerId[] = ['can', 'urea', 'uan', 'ssa', 'custom']
-
-function serializeForm(formData: FormData): Record<string, string> {
-  const out: Record<string, string> = {
-    variable: formData.variable,
-    tanApp: String(formData.tanApp),
-    appMthd: formData.appMthd,
-    manDm: String(formData.manDm),
-    manPh: String(formData.manPh),
-    manSource: formData.manSource,
-    appTime: String(formData.appTime),
-    incorpTime: String(formData.incorpTime),
-    incorpDepth: formData.incorpDepth,
-    fert: formData.fertilizer,
-    unit: formData.chartUnit,
-  }
-  if (formData.fertilizer === 'custom') {
-    out.eurkgn = String(formData.customEurPerKgN)
-  }
-  if (formData.farmSizeHa && formData.farmSizeHa > 0) {
-    out.farmha = String(formData.farmSizeHa)
-  }
-  return out
+const VARIABLE_FORM_KEY: Record<VariableName, keyof FormData> = {
+  app_mthd: 'appMthd',
+  app_time: 'appTime',
+  man_dm: 'manDm',
+  man_ph: 'manPh',
+  man_source: 'manSource',
+  incorp_depth: 'incorpDepth',
+  incorp_time: 'incorpTime',
 }
 
-function deserializeForm(params: URLSearchParams): FormData {
-  const d = { ...DEFAULT_FORM_DATA }
-  if (params.has('variable') && ALL_VARIABLES.includes(params.get('variable') as VariableName))
-    d.variable = params.get('variable') as VariableName
-  if (params.has('tanApp')) d.tanApp = parseFloat(params.get('tanApp')!) || 60
-  if (params.has('appMthd') && ['bc', 'th', 'ts', 'os', 'cs'].includes(params.get('appMthd')!))
-    d.appMthd = params.get('appMthd')!
-  if (params.has('manDm')) d.manDm = parseFloat(params.get('manDm')!) || 6
-  if (params.has('manPh')) d.manPh = parseFloat(params.get('manPh')!) || 7.5
-  if (params.has('manSource') && ['cattle', 'pig'].includes(params.get('manSource')!))
-    d.manSource = params.get('manSource') as 'cattle' | 'pig'
-  if (params.has('appTime')) {
-    const h = parseInt(params.get('appTime')!, 10)
-    if (!isNaN(h) && h >= 0 && h <= 23) d.appTime = h
-  }
-  if (params.has('incorpTime')) d.incorpTime = parseFloat(params.get('incorpTime')!) || 0
-  if (params.has('incorpDepth') && ['none', 'shallow', 'deep'].includes(params.get('incorpDepth')!))
-    d.incorpDepth = params.get('incorpDepth') as FormData['incorpDepth']
-  if (params.has('fert') && FERT_IDS.includes(params.get('fert') as FertilizerId)) {
-    d.fertilizer = params.get('fert') as FertilizerId
-  }
-  if (params.has('eurkgn')) {
-    const v = parseFloat(params.get('eurkgn')!)
-    if (!isNaN(v) && v > 0) d.customEurPerKgN = v
-  }
-  if (params.has('farmha')) {
-    const v = parseFloat(params.get('farmha')!)
-    if (!isNaN(v) && v > 0) d.farmSizeHa = v
-  }
-  if (params.has('unit')) {
-    const u = params.get('unit')
-    if (u === 'kgha' || u === 'eur') {
-      d.chartUnit = u
-    }
-  }
-  return d
-}
-
-/** Format a variant value for display, using i18n translations. */
-function variantLabel(t: any, variable: VariableName, value: string | number, def?: VariantDef): string {
-  const key = def?.labelKey ?? String(value)
-  const main = t(`variants.${variable}.${key}`, { defaultValue: String(value) })
-  if (def?.hasCategory) {
-    const cat = t(`categories.${variable}.${key}`, { defaultValue: '' })
-    if (cat) return `${main} — ${cat}`
-  }
-  return main
+function DayNavButton({ direction, disabled, onClick }: {
+  direction: 'prev' | 'next'
+  disabled: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`p-2 ${direction === 'prev' ? 'mr-2' : 'ml-2'} rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors`}
+      aria-label={direction === 'prev' ? 'Previous day' : 'Next day'}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+        {direction === 'prev' ? (
+          <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+        ) : (
+          <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+        )}
+      </svg>
+    </button>
+  )
 }
 
 export default function Calculation() {
@@ -116,22 +73,28 @@ export default function Calculation() {
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedDay = day ? parseInt(day, 10) : null
 
-  const [locationName, setLocationName] = useState<string | null>(null)
-  const [locationLoading, setLocationLoading] = useState(true)
   const [alfam2Info, setAlfam2Info] = useState<{ version: string; parsSet: string } | null>(null)
-
-  const [data, setData] = useState<ApiResponse | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState<FormData>(() => deserializeForm(searchParams))
   const [showRadioHint, setShowRadioHint] = useState(false)
   const [showFarmSize, setShowFarmSize] = useState<boolean>(() => !!formData.farmSizeHa)
 
-  // Shared hidden-variant state for the overview chart legend and cost summary.
-  // Hook is called unconditionally; when no data has loaded yet, we pass the
-  // currently-selected variable + an empty values array.
-  const {hiddenValues, toggleValue} = useHiddenValues(
+  // Sync URL search params with formData.
+  useFormUrlSync(formData, setSearchParams)
+
+  // Location name + main calculation + CI fetch — all extracted into hooks.
+  const { locationName, locationLoading } = useReverseGeocode(lat, lng)
+  const { data, setData, loading, error } = useCalculation({ lat, lng, formData })
+  const { ciLoadingValues, ciVisibleValues, handleCiClick } = useCiFetcher({
+    data,
+    setData,
+    lat,
+    lng,
+    formData,
+  })
+
+  // Shared hidden-variant state for the chart legend and cost summary.
+  const { hiddenValues, toggleValue } = useHiddenValues(
     data?.variable ?? formData.variable,
     data?.values ?? [],
   )
@@ -139,29 +102,32 @@ export default function Calculation() {
   // Logo expansion: on hover (desktop) or when scrolled to top (touch devices).
   const [iconHover, setIconHover] = useState(false)
   const [atTop, setAtTop] = useState(true)
-  const [isTouch, setIsTouch] = useState(false)
+  const [hasScrollbar, setHasScrollbar] = useState(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    setIsTouch(
-      'ontouchstart' in window ||
-      navigator.maxTouchPoints > 0 ||
-      window.matchMedia('(pointer: coarse)').matches
-    )
-    const onScroll = () => setAtTop(window.scrollY <= 4)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
+    const update = () => {
+      setAtTop(window.scrollY <= 4)
+      setHasScrollbar(document.documentElement.scrollHeight > window.innerHeight + 4)
+    }
+    update()
+    window.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [data, loading, selectedDay, formData.variable, showFarmSize])
 
-  const iconExpanded = iconHover || (isTouch && atTop)
+  const iconExpanded = iconHover || !hasScrollbar || atTop
 
   useEffect(() => {
     const controller = new AbortController()
     fetch('/api/status', { signal: controller.signal })
       .then((res) => res.json())
       .then((d) => {
-        if (d.alfam2_version) setAlfam2Info({ version: d.alfam2_version, parsSet: d.alfam2_pars_set })
+        if (d.alfam2_version)
+          setAlfam2Info({ version: d.alfam2_version, parsSet: d.alfam2_pars_set })
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return
@@ -169,139 +135,20 @@ export default function Calculation() {
     return () => controller.abort()
   }, [])
 
-  useEffect(() => {
-    const p = new URLSearchParams(serializeForm(formData))
-    setSearchParams(p, { replace: true })
-  }, [formData, setSearchParams])
-
-  useEffect(() => {
-    if (!lat || !lng) return
-    const controller = new AbortController()
-    fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=${i18n.language}`,
-      { headers: { 'User-Agent': 'ammonitor/0.3' }, signal: controller.signal }
-    )
-      .then((res) => res.json())
-      .then((d) => {
-        const city =
-          d.address?.city ||
-          d.address?.town ||
-          d.address?.village ||
-          d.address?.municipality ||
-          d.address?.county
-        setLocationName(city || null)
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setLocationName(null)
-      })
-      .finally(() => setLocationLoading(false))
-    return () => controller.abort()
-  }, [lat, lng, i18n.language])
-
-  useEffect(() => {
-    if (!lat || !lng) return
-
-    const controller = new AbortController()
-
-    setLoading(true)
-    setError(null)
-
-    const browserTz =
-      Intl.DateTimeFormat().resolvedOptions().timeZone || 'auto'
-
-    const values = VARIANT_DEFS[formData.variable].map((d) => d.value)
-
-    fetch('/api/calculate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        lat: parseFloat(lat),
-        lng: parseFloat(lng),
-        variable: formData.variable,
-        values,
-        app_mthd: formData.appMthd,
-        man_dm: formData.manDm,
-        man_ph: formData.manPh,
-        man_source: formData.manSource,
-        app_time: formData.appTime,
-        incorp_depth: formData.incorpDepth,
-        incorp_time: formData.incorpTime,
-        timezone: browserTz,
-      }),
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const err = await res.text()
-          throw new Error(err || `Server responded with ${res.status}`)
-        }
-        return res.json()
-      })
-      .then((payload: ApiResponse) => {
-        setData(payload)
-        setLoading(false)
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        const message = err instanceof Error ? err.message : String(err)
-        console.error('Calculation error:', message)
-        setError(message)
-        setData(null)
-        setLoading(false)
-      })
-    return () => controller.abort()
-  }, [
-    lat,
-    lng,
-    formData.variable,
-    formData.appMthd,
-    formData.manDm,
-    formData.manPh,
-    formData.manSource,
-    formData.appTime,
-    formData.incorpDepth,
-    formData.incorpTime,
-  ])
-
   const handleFixedChange = useCallback(
-    (name: string, value: any) => {
-      setFormData((prev) => {
-        const next = { ...prev, [name]: value }
-        if (name === 'incorpDepth') {
-          if (value === 'none') {
-            next.incorpTime = 0
-            if (prev.variable === 'incorp_time' || prev.variable === 'incorp_depth') {
-              next.variable = 'app_mthd'
-            }
-          } else if (prev.incorpDepth === 'none') {
-            next.incorpTime = 4
-          }
-        }
-        if (name === 'incorpTime' && value > 0 && prev.incorpDepth === 'none') {
-          next.incorpDepth = 'shallow'
-        }
-        return next
-      })
+    <K extends keyof FormData>(name: K, value: FormData[K]) => {
+      setFormData((prev) => applyFixedChange(prev, name, value))
     },
     [],
   )
 
-  const handleVariableChange = useCallback(
-    (variable: VariableName) => {
-      setFormData((prev) => {
-        if (variable === 'incorp_time' && prev.incorpDepth === 'none') {
-          return { ...prev, variable, incorpDepth: 'shallow', incorpTime: 4 }
-        }
-        return { ...prev, variable }
-      })
-    },
-    [],
-  )
+  const handleVariableChange = useCallback((variable: VariableName) => {
+    setFormData((prev) => applyVariableChange(prev, variable))
+  }, [])
 
   const handleDayClick = useCallback(
-    (day: number) => {
-      navigate(`/calculate/${lat}/${lng}/${day}`)
+    (d: number) => {
+      navigate(`/calculate/${lat}/${lng}/${d}`)
     },
     [navigate, lat, lng],
   )
@@ -311,9 +158,12 @@ export default function Calculation() {
       ? data.days.find((d) => d.day === selectedDay)
       : null
 
-  // Build a readable subject for sharing: "Vienna" for overview, "Vienna — Apr 28" for detail.
+  // Build a readable subject for sharing: "Vienna" for overview,
+  // "Vienna — Apr 28" for detail.
   const shareSubject = (() => {
-    const loc = locationName ?? (lat && lng ? `${parseFloat(lat).toFixed(2)}, ${parseFloat(lng).toFixed(2)}` : null)
+    const loc =
+      locationName ??
+      (lat && lng ? `${parseFloat(lat).toFixed(2)}, ${parseFloat(lng).toFixed(2)}` : null)
     if (!loc) return null
     if (selectedDayData) {
       return `${loc} — ${formatDayLabel(selectedDayData.start, i18n.language)}`
@@ -328,21 +178,19 @@ export default function Calculation() {
   ) => {
     const defs = VARIANT_DEFS[variable]
     const isDisabled = formData.variable === variable
-    const isNumeric = (
-      variable === 'man_dm' || variable === 'man_ph' ||
-      variable === 'incorp_time' || variable === 'app_time'
-    )
+    const isNumeric =
+      variable === 'man_dm' ||
+      variable === 'man_ph' ||
+      variable === 'incorp_time' ||
+      variable === 'app_time'
 
     return (
       <select
         value={String(currentValue ?? '')}
         onChange={(e) => {
           const v = e.target.value
-          if (isNumeric) {
-            onChange(parseFloat(v))
-          } else {
-            onChange(v)
-          }
+          if (isNumeric) onChange(parseFloat(v))
+          else onChange(v)
         }}
         disabled={isDisabled}
         className={`w-full px-2 py-1.5 text-sm rounded-lg border focus:outline-none focus:border-indigo-500 ${
@@ -362,7 +210,7 @@ export default function Calculation() {
 
   return (
     <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
-      <div className="sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 py-3">
+      <div className={`sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 transition-[padding] duration-200 ease-out ${iconExpanded ? 'py-3' : 'py-1'}`}>
         <div className="flex items-center gap-2">
           {selectedDay !== null ? (
             <button
@@ -393,6 +241,12 @@ export default function Calculation() {
             onMouseLeave={() => setIconHover(false)}
             onFocus={() => setIconHover(true)}
             onBlur={() => setIconHover(false)}
+            onClick={(e) => {
+              if (window.scrollY > 4) {
+                e.preventDefault()
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }
+            }}
           >
             <span className="inline-flex items-center gap-3 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
               <SiteIcon expanded={iconExpanded} />
@@ -406,7 +260,6 @@ export default function Calculation() {
         </div>
       </div>
       <div className="p-4 md:p-6">
-
         <div className="mb-4 md:mb-6">
           {locationLoading ? (
             <p className="text-slate-500 dark:text-slate-400">{t('calculation.loading_location')}</p>
@@ -423,7 +276,7 @@ export default function Calculation() {
           )}
         </div>
 
-        <div className="flex flex-col lg:grid lg:grid-cols-[18rem_minmax(0,1fr)_16rem] gap-4 lg:gap-6 items-stretch lg:h-[calc(100vh-11rem)] lg:min-h-[470px]">
+        <div className={`flex flex-col lg:grid lg:gap-6 items-stretch lg:min-h-[470px] ${iconExpanded ? 'lg:grid-cols-[18rem_minmax(0,1fr)_16rem] lg:h-[calc(100vh-11rem)]' : 'lg:grid-cols-[18rem_minmax(0,1fr)_16rem] lg:h-[calc(100vh-10rem)]'}`}>
           {/* Form panel — fixed width on lg+, full width below */}
           <div className={`w-full lg:w-auto lg:shrink-0 lg:min-h-0 lg:overflow-y-auto bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
             <div className="flex items-center gap-2 mb-3">
@@ -451,7 +304,6 @@ export default function Calculation() {
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
-
               {/* TAN applied */}
               <div className="flex items-center gap-2">
                 <div className="w-4" />
@@ -479,31 +331,9 @@ export default function Calculation() {
                 <React.Fragment key={gi}>
                   {group.map((variable) => {
                     const isVariable = formData.variable === variable
-                    let currentValue: any = undefined
-                    let onChange: (value: any) => void = () => {}
-
-                    switch (variable) {
-                      case 'app_mthd':
-                        currentValue = formData.appMthd
-                        onChange = (v) => handleFixedChange('appMthd', v)
-                        break
-                      case 'app_time':
-                        currentValue = formData.appTime
-                        onChange = (v) => handleFixedChange('appTime', v)
-                        break
-                      case 'man_dm':
-                        currentValue = formData.manDm
-                        onChange = (v) => handleFixedChange('manDm', v)
-                        break
-                      case 'man_ph':
-                        currentValue = formData.manPh
-                        onChange = (v) => handleFixedChange('manPh', v)
-                        break
-                      case 'man_source':
-                        currentValue = formData.manSource
-                        onChange = (v) => handleFixedChange('manSource', v)
-                        break
-                    }
+                    const formKey = VARIABLE_FORM_KEY[variable]
+                    const currentValue = formData[formKey]
+                    const onChange = (v: any) => handleFixedChange(formKey, v)
 
                     return (
                       <div key={variable} className="flex items-center gap-2">
@@ -532,16 +362,9 @@ export default function Calculation() {
                       <div className="grid grid-cols-2 md:grid-cols-2 gap-2">
                         {(['incorp_depth', 'incorp_time'] as const).map((variable) => {
                           const isVariable = formData.variable === variable
-                          let currentValue: any
-                          let onChange: (value: any) => void
-
-                          if (variable === 'incorp_depth') {
-                            currentValue = formData.incorpDepth
-                            onChange = (v) => handleFixedChange('incorpDepth', v)
-                          } else {
-                            currentValue = formData.incorpTime
-                            onChange = (v) => handleFixedChange('incorpTime', v)
-                          }
+                          const formKey = VARIABLE_FORM_KEY[variable]
+                          const currentValue = formData[formKey]
+                          const onChange = (v: any) => handleFixedChange(formKey, v)
 
                           return (
                             <div key={variable} className="flex items-center gap-1">
@@ -570,7 +393,6 @@ export default function Calculation() {
                 </React.Fragment>
               ))}
             </div>
-
           </div>
 
           {/* Chart panel — grows to fill available space */}
@@ -594,16 +416,11 @@ export default function Calculation() {
 
             <div className="flex items-center mb-1">
               {selectedDay !== null && (
-                <button
+                <DayNavButton
+                  direction="prev"
                   onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.max(0, selectedDay - 1)}`, { replace: true })}
                   disabled={selectedDay <= 0}
-                  className="p-2 mr-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
-                  aria-label="Previous day"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                    <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
-                  </svg>
-                </button>
+                />
               )}
               <h2 className="text-lg font-semibold flex-1 text-center">
                 {selectedDay === null
@@ -614,16 +431,11 @@ export default function Calculation() {
                     })}
               </h2>
               {selectedDay !== null && (
-                <button
+                <DayNavButton
+                  direction="next"
                   onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.min((data?.days.length ?? 1) - 1, selectedDay + 1)}`, { replace: true })}
                   disabled={!data || selectedDay >= data.days.length - 1}
-                  className="p-2 ml-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
-                  aria-label="Next day"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-                  </svg>
-                </button>
+                />
               )}
             </div>
             {alfam2Info && (
@@ -672,6 +484,7 @@ export default function Calculation() {
                   onDayClick={handleDayClick}
                   hiddenValues={hiddenValues}
                   toggleValue={toggleValue}
+                  ciVisibleValues={ciVisibleValues}
                 />
               )}
               {data && selectedDay !== null && (
@@ -681,6 +494,9 @@ export default function Calculation() {
                   formData={formData}
                   hiddenValues={hiddenValues}
                   toggleValue={toggleValue}
+                  onCiClick={handleCiClick}
+                  ciLoadingValues={ciLoadingValues}
+                  ciVisibleValues={ciVisibleValues}
                 />
               )}
             </div>

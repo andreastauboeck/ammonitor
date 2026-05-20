@@ -18,10 +18,29 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from run_alfam2 import run_alfam2
+from run_alfam2 import run_alfam2, run_alfam2_single
 from weather import fetch_weather
 
-VERSION = os.getenv("VERSION", "0.1.0")
+def _read_version() -> str:
+    """Read version from the repo-root VERSION file.
+
+    Resolution order:
+      1. VERSION alongside main.py (Docker: /app/VERSION)
+      2. VERSION one level up (local dev: backend/../VERSION)
+      3. VERSION env-var (CI / docker-compose override)
+      4. "dev" fallback
+    """
+    try:
+        current = Path(__file__).resolve()
+        for base in (current.parent, current.parent.parent):
+            v_path = base / "VERSION"
+            if v_path.is_file():
+                return v_path.read_text().strip()
+    except OSError:
+        pass
+    return os.getenv("VERSION", "dev")
+
+VERSION = _read_version()
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
 
 logger = logging.getLogger("ammonitor")
@@ -37,7 +56,7 @@ def _setup_sentry() -> None:
     if not dsn:
         return
     try:
-        import sentry_sdk
+        import sentry_sdk  # pylint: disable=import-outside-toplevel
         sentry_sdk.init(
             dsn=dsn,
             environment=ENVIRONMENT,
@@ -46,7 +65,7 @@ def _setup_sentry() -> None:
             send_default_pii=False,
         )
         logger.info("Sentry initialized environment=%s release=%s", ENVIRONMENT, VERSION)
-    except Exception:
+    except (ImportError, RuntimeError):
         logger.warning("Failed to initialize Sentry", exc_info=True)
 
 
@@ -61,7 +80,7 @@ def _get_alfam2_info() -> tuple[str, str]:
             capture_output=True, text=True, timeout=30, check=False,
         )
         alfam2_version = ver_proc.stdout.strip() if ver_proc.returncode == 0 else "unknown"
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         alfam2_version = "unknown"
 
     try:
@@ -73,7 +92,7 @@ def _get_alfam2_info() -> tuple[str, str]:
             capture_output=True, text=True, timeout=30, check=False,
         )
         alfam2_pars_set = pars_proc.stdout.strip() if pars_proc.returncode == 0 else "3"
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         alfam2_pars_set = "3"
 
     return alfam2_version, alfam2_pars_set
@@ -135,6 +154,12 @@ CALCULATE_EXAMPLE = {
 }
 
 
+CALCULATE_CI_EXAMPLE = {
+    **{k: v for k, v in CALCULATE_EXAMPLE.items() if k not in ("values", "variable")},
+    "day": 0,
+}
+
+
 class CalculateInput(BaseModel):
     """Request body for the /api/calculate endpoint.
 
@@ -183,6 +208,46 @@ class CalculateInput(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": CALCULATE_EXAMPLE,
+        }
+    }
+
+
+class CalculateCiInput(BaseModel):
+    """Request body for the /api/calculate-ci endpoint.
+
+    Run ALFAM2 for a single scenario on a single day, with bootstrap
+    confidence intervals. The caller pre-resolves every scalar parameter
+    (no `variable` / `value` discriminator) — whichever variant they
+    want the CI for, they just set the corresponding scalar field.
+    Returns the resulting variant including `final_loss_lwr/upr` and
+    per-hour `er_lwr/upr` bounds.
+    """
+    lat: float = Field(..., ge=-90, le=90, description="Latitude (WGS84)")
+    lng: float = Field(..., ge=-180, le=180, description="Longitude (WGS84)")
+    day: int = Field(
+        0, ge=0, le=7,
+        description="Day index (0-7) to compute CI for"
+    )
+    app_mthd: AppMethod = Field("th", description="Application method")
+    app_time: int = Field(12, ge=0, le=23)
+    man_dm: float = Field(6.0, ge=1.0, le=15.0)
+    man_ph: float = Field(7.5, ge=5.5, le=9.0)
+    man_source: ManureSource = Field("cattle")
+    incorp_depth: IncorpDepth = Field("none")
+    incorp_time: float = Field(0.0, ge=0.0)
+    timezone: str = Field("auto")
+    conf_int: float = Field(
+        0.95, gt=0.0, lt=1.0,
+        description="Confidence interval level (default 0.95)"
+    )
+    n_ci: int = Field(
+        100, ge=10, le=1000,
+        description="Number of bootstrap iterations (default 100)"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": CALCULATE_CI_EXAMPLE,
         }
     }
 
@@ -292,6 +357,90 @@ def calculate(input_data: CalculateInput) -> dict:
         "values": input_data.values,
         "days": result["days"],
         "weather": weather["hourly"],
+    }
+
+
+@app.post("/api/calculate-ci",
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "example": CALCULATE_CI_EXAMPLE,
+                }
+            }
+        }
+    })
+def calculate_ci(input_data: CalculateCiInput) -> dict:
+    """Run ALFAM2 with bootstrap CI for a single scenario on a single day.
+
+    All scalars are pre-resolved by the caller. Returns one variant for
+    one day with hourly CI bounds. The frontend merges the variant back
+    into the existing 8-day overview data structure (tracking which
+    variant it asked about locally — the backend doesn't echo it).
+    """
+    day_idx = input_data.day
+    t0 = _time.monotonic()
+    logger.info(
+        "calculate_ci.start day=%d n_ci=%d lat=%.4f lng=%.4f incorp=%s",
+        day_idx, input_data.n_ci, input_data.lat, input_data.lng,
+        input_data.incorp_depth,
+    )
+
+    try:
+        weather = fetch_weather(input_data.lat, input_data.lng, input_data.timezone)
+    except Exception as e:
+        logger.error("calculate_ci.weather_fail err=%s", e)
+        raise HTTPException(status_code=502, detail=f"Weather fetch failed: {e}") from e
+
+    first_hour_iso = weather["hourly"][0]["time_iso"]
+    first_date = datetime.fromisoformat(first_hour_iso).date()
+
+    daily_starts = [
+        datetime.combine(
+            first_date + timedelta(days=i),
+            dt_time(hour=input_data.app_time),
+        ).isoformat(timespec="minutes")
+        for i in range(8)
+    ]
+
+    try:
+        result = run_alfam2_single(
+            app_mthd=input_data.app_mthd,
+            man_dm=input_data.man_dm,
+            man_ph=input_data.man_ph,
+            man_source=input_data.man_source,
+            application_hour=input_data.app_time,
+            incorp_depth=input_data.incorp_depth,
+            incorp_time=input_data.incorp_time,
+            weather_hourly=weather["hourly"],
+            start_dates_iso=daily_starts,
+            conf_int=input_data.conf_int,
+            n_ci=input_data.n_ci,
+            day_indices=[day_idx],
+        )
+    except Exception as e:
+        logger.error("calculate_ci.alfam2_fail day=%d err=%s", day_idx, e)
+        raise HTTPException(status_code=500, detail=f"ALFAM2 model error: {e}") from e
+
+    elapsed = _time.monotonic() - t0
+    logger.info("calculate_ci.done day=%d elapsed=%.1fs", day_idx, elapsed)
+
+    # Single day in result; pick its single variant. Drop the
+    # placeholder `value` field (frontend tracks the variant locally).
+    day_data: dict | None = result["days"][0] if result["days"] else None
+    if day_data is not None:
+        variant = day_data["variants"][0] if day_data["variants"] else None
+        if variant is not None and "value" in variant:
+            variant = {k: v for k, v in variant.items() if k != "value"}
+        start = day_data["start"]
+    else:
+        variant = None
+        start = ""
+
+    return {
+        "day": day_idx,
+        "start": start,
+        "variant": variant,
     }
 
 

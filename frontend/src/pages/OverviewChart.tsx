@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   BarChart,
   Bar,
+  ErrorBar,
   ComposedChart,
   Area,
   Line,
@@ -16,125 +17,24 @@ import {
   type ApiResponse,
   type ChartUnit,
   type FormData,
-  type VariableName,
   VARIANT_COLORS,
   niceMax,
 } from './types'
 import { useTheme } from '../theme/ThemeContext'
-import { getChartColors, type ChartColors } from '../theme/chartColors'
+import { getChartColors } from '../theme/chartColors'
 import {
   formatEur,
   getEurPerKgN,
   pctToEurPerHa,
   pctToKgPerHa,
 } from '../lib/costs'
-
-function variantLabel(t: any, variable: VariableName, value: string | number): string {
-  return t(`variants.${variable}.${value}`, { defaultValue: String(value) })
-}
-
-/** Convert a variant value to a Recharts-safe dataKey (no dots — Recharts treats dots as nested path access). */
-function valueToKey(value: string | number): string {
-  return String(value).replace(/\./g, '_')
-}
-
-interface EmissionTooltipProps {
-  active?: boolean
-  payload?: any[]
-  label?: string | number
-  tanApp: number
-  forceHide?: boolean
-  colors: ChartColors
-  chartUnit: ChartUnit
-  eurPerKgN: number
-  locale: string
-  kgUnitLabel: string
-}
-
-function EmissionTooltip({
-  active, payload, label, tanApp, forceHide, colors,
-  chartUnit, eurPerKgN, locale, kgUnitLabel,
-}: EmissionTooltipProps) {
-  if (!active || !payload || payload.length === 0) return null
-  if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
-  return (
-    <div
-      style={{
-        backgroundColor: colors.tooltipBg,
-        border: `1px solid ${colors.tooltipBorder}`,
-        borderRadius: '6px',
-        padding: '4px 6px',
-        fontSize: '10px',
-        color: colors.tooltipText,
-        lineHeight: '1.25',
-      }}
-    >
-      <div style={{ fontWeight: 600 }}>{label}</div>
-      {payload.map((entry: any) => {
-        const pct = entry.value as number
-        const kg = pctToKgPerHa(pct, tanApp)
-        const eur = pctToEurPerHa(pct, tanApp, eurPerKgN)
-        const main = `${pct.toFixed(1)}%`
-        const secondary = chartUnit === 'kgha'
-          ? `${kg.toFixed(1)} ${kgUnitLabel}`
-          : `${formatEur(eur, locale)}/ha`
-        return (
-          <div key={entry.dataKey} style={{ color: entry.color }}>
-            {entry.name}: {main} ({secondary})
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-interface WeatherTooltipProps {
-  active?: boolean
-  payload?: any[]
-  label?: string | number
-  forceHide?: boolean
-  colors: ChartColors
-}
-
-function WeatherTooltip({ active, payload, label, forceHide, colors }: WeatherTooltipProps) {
-  if (!active || !payload || payload.length === 0) return null
-  if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
-  const showKeys = ['air_temp', 'wind_kmh', 'rain_rate']
-  const filtered = payload.filter((entry: any) => showKeys.includes(entry.dataKey))
-  return (
-    <div
-      style={{
-        backgroundColor: colors.tooltipBg,
-        border: `1px solid ${colors.tooltipBorder}`,
-        borderRadius: '6px',
-        padding: '4px 6px',
-        fontSize: '10px',
-        color: colors.tooltipText,
-        lineHeight: '1.25',
-      }}
-    >
-      <div style={{ fontWeight: 600 }}>{label}</div>
-      {filtered.map((entry: any) => (
-        <div key={entry.dataKey} style={{ color: entry.color }}>
-          {entry.name}: {typeof entry.value === 'number' ? entry.value.toFixed(1) : entry.value}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function useIsTouch() {
-  const [isTouch, setIsTouch] = useState(false)
-  useEffect(() => {
-    const check = () =>
-      typeof window !== 'undefined' &&
-      ('ontouchstart' in window ||
-        navigator.maxTouchPoints > 0 ||
-        window.matchMedia('(pointer: coarse)').matches)
-    setIsTouch(check())
-  }, [])
-  return isTouch
-}
+import { ciKey, valueToKey } from '../lib/rechartsKeys'
+import { variantLabel } from '../lib/variantLabel'
+import { useChartScroll } from '../lib/useChartScroll'
+import { useTouchTooltip } from '../lib/useTouchTooltip'
+import EmissionTooltip from './charts/EmissionTooltip'
+import WeatherTooltip from './charts/WeatherTooltip'
+import VariantLegend from './charts/VariantLegend'
 
 interface OverviewChartProps {
   data: ApiResponse
@@ -142,6 +42,9 @@ interface OverviewChartProps {
   onDayClick: (day: number) => void
   hiddenValues: Set<string>
   toggleValue: (value: string) => void
+  /** Set of variant values whose CI band is currently visible. Only
+   *  variants in this set will get ErrorBar overlays on their bars. */
+  ciVisibleValues?: Set<string>
 }
 
 export default function OverviewChart({
@@ -150,35 +53,36 @@ export default function OverviewChart({
   onDayClick,
   hiddenValues,
   toggleValue,
+  ciVisibleValues,
 }: OverviewChartProps) {
   const { t, i18n } = useTranslation()
   const { resolved } = useTheme()
   const colors = getChartColors(resolved)
   const variableName = data.variable
   const values = data.values
-  const isTouch = useIsTouch()
+  const { active: scrollTooltip, touchStart } = useTouchTooltip(1200)
+  const { emissionRef, weatherRef, syncScroll, isTouch } = useChartScroll({ onScroll: () => touchStart() })
   const eurPerKgN = getEurPerKgN(formData)
   const chartUnit: ChartUnit = formData.chartUnit
   const tanApp = formData.tanApp
   const locale = i18n.language
   const kgUnitLabel = t('units.kg_per_ha')
-  const emissionScrollRef = useRef<HTMLDivElement>(null)
-  const weatherScrollRef = useRef<HTMLDivElement>(null)
-  const isSyncingRef = useRef(false)
-  const syncIdRef = useRef(`overview-${Math.random().toString(36).slice(2)}`)
-  const [scrollTooltip, setScrollTooltip] = useState(false)
-  const scrollDismissRef = useRef<ReturnType<typeof setTimeout>>()
 
   const visibleValues = useMemo(
     () => values.filter((v) => !hiddenValues.has(String(v))),
     [values, hiddenValues],
   )
 
-  useEffect(() => {
-    return () => {
-      if (scrollDismissRef.current) clearTimeout(scrollDismissRef.current)
-    }
-  }, [])
+  const valueKeys = useMemo(() => values.map((v) => valueToKey(v)), [values])
+
+  const hasCiData = useMemo(() => {
+    if (!ciVisibleValues || ciVisibleValues.size === 0) return false
+    return data.days.some((d) =>
+      d.variants.some(
+        (v) => ciVisibleValues.has(String(v.value)) && v.final_loss_lwr != null,
+      ),
+    )
+  }, [data, ciVisibleValues])
 
   const overviewData = useMemo(() => {
     return data.days.map((d) => {
@@ -192,7 +96,14 @@ export default function OverviewChart({
         start: d.start,
       }
       for (const v of d.variants) {
-        row[valueToKey(v.value)] = v.final_loss_pct
+        const key = valueToKey(v.value)
+        row[key] = v.final_loss_pct
+        if (v.final_loss_lwr != null && v.final_loss_upr != null) {
+          row[ciKey(key)] = [
+            +(v.final_loss_pct - v.final_loss_lwr).toFixed(2),
+            +(v.final_loss_upr - v.final_loss_pct).toFixed(2),
+          ]
+        }
       }
       return row
     })
@@ -202,8 +113,11 @@ export default function OverviewChart({
     let m = 0
     for (const row of overviewData) {
       for (const v of visibleValues) {
-        const cell = row[valueToKey(v)] ?? 0
-        if (cell > m) m = cell
+        const key = valueToKey(v)
+        const cell = row[key] ?? 0
+        const ci = row[ciKey(key)]
+        const upr = ci ? cell + ci[1] : cell
+        if (upr > m) m = upr
       }
     }
     return niceMax(m)
@@ -216,21 +130,11 @@ export default function OverviewChart({
     }
   }
 
-  const handleWeatherClick = (_e: any) => {}
-
-  const syncScroll = (source: 'emission' | 'weather') => () => {
-    if (isSyncingRef.current) return
-    if (isTouch) {
-      setScrollTooltip(true)
-      if (scrollDismissRef.current) clearTimeout(scrollDismissRef.current)
-      scrollDismissRef.current = setTimeout(() => setScrollTooltip(false), 1200)
+  const handleWeatherClick = (e: any) => {
+    if (e && typeof e.activeTooltipIndex === 'number') {
+      const row = weatherOverviewData[e.activeTooltipIndex]
+      if (row) onDayClick(row.day)
     }
-    const src = source === 'emission' ? emissionScrollRef.current : weatherScrollRef.current
-    const tgt = source === 'emission' ? weatherScrollRef.current : emissionScrollRef.current
-    if (!src || !tgt) return
-    isSyncingRef.current = true
-    tgt.scrollLeft = src.scrollLeft
-    requestAnimationFrame(() => { isSyncingRef.current = false })
   }
 
   const weatherOverviewData = useMemo(() => {
@@ -300,31 +204,42 @@ export default function OverviewChart({
     return niceMax(Math.max(m, 1))
   }, [weatherOverviewData])
 
+  const weatherDayTicks = useMemo(
+    () => weatherOverviewData.map((row) => row.day),
+    [weatherOverviewData],
+  )
+
+  const weatherDayLabel = (dayValue: number) => {
+    const row = weatherOverviewData.find((d) => d.day === dayValue)
+    return row?.dayLabel ?? String(dayValue)
+  }
+
+  /** Overview CI accessor: reads `${k}_ci` (ErrorBar delta tuple) and
+   *  reconstructs absolute bounds from the variant's own value. */
+  const getCi = (entry: any) => {
+    // Recharts passes the variant payload; we look up the matching `_ci`
+    // entry in the same tooltip payload via the shared row data.
+    // The simpler approach: find from row directly using the entry's
+    // dataKey, but the tooltip doesn't expose the row — we rely on
+    // valueKeys + payload entries. Since Overview adds `${k}_ci` as a
+    // hidden series only on ErrorBar, those entries do appear in the
+    // payload. We map them via dataKey suffix.
+    const ciEntry = (entry?.payload ?? {})[ciKey(entry.dataKey as string)]
+    if (!ciEntry || !Array.isArray(ciEntry)) return null
+    const pct = entry.value as number
+    return { lwr: pct - ciEntry[0], upr: pct + ciEntry[1] }
+  }
+
   return (
     <>
-      {/* Fixed legend */}
-      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-700 dark:text-slate-300 mb-1 shrink-0">
-        {values.map((value, i) => {
-          const hidden = hiddenValues.has(String(value))
-          return (
-            <button
-              key={String(value)}
-              type="button"
-              onClick={() => toggleValue(String(value))}
-              className={`inline-flex items-center gap-1 cursor-pointer select-none transition-opacity ${hidden ? 'opacity-30' : 'opacity-100'}`}
-            >
-              <span
-                className="inline-block w-3 h-3 border"
-                style={{
-                  backgroundColor: hidden ? 'transparent' : VARIANT_COLORS[i % VARIANT_COLORS.length],
-                  borderColor: VARIANT_COLORS[i % VARIANT_COLORS.length],
-                }}
-              />
-              {variantLabel(t, variableName, value)}
-            </button>
-          )
-        })}
-      </div>
+      <VariantLegend
+        values={values}
+        variableName={variableName}
+        hiddenValues={hiddenValues}
+        toggleValue={toggleValue}
+        swatch="bar"
+        showCiChip={hasCiData}
+      />
 
       <div className="flex-[3] min-h-0 flex">
         {/* Left fixed column: vertical label + left y-axis */}
@@ -356,7 +271,7 @@ export default function OverviewChart({
         </div>
 
         {/* Middle scrollable column */}
-        <div ref={emissionScrollRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
+        <div ref={emissionRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[600px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -364,7 +279,6 @@ export default function OverviewChart({
                 margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
                 barCategoryGap="10%"
                 barGap={2}
-                syncId={syncIdRef.current}
                 onClick={handleEmissionClick}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
@@ -382,21 +296,36 @@ export default function OverviewChart({
                       eurPerKgN={eurPerKgN}
                       locale={locale}
                       kgUnitLabel={kgUnitLabel}
+                      valueKeys={valueKeys}
+                      getCi={getCi}
                     />
                   }
                   cursor={isTouch ? false : { fill: colors.cursorFill }}
                 />
                 {visibleValues.map((value) => {
                   const i = values.indexOf(value)
+                  const k = valueToKey(value)
+                  const color = VARIANT_COLORS[i % VARIANT_COLORS.length]
+                  const ciVisible = ciVisibleValues?.has(String(value)) ?? false
+                  const hasCi = ciVisible && overviewData.some((r: any) => r[ciKey(k)] != null)
                   return (
                     <Bar
                       key={String(value)}
-                      dataKey={valueToKey(value)}
+                      dataKey={k}
                       name={variantLabel(t, variableName, value)}
                       yAxisId="left"
-                      fill={VARIANT_COLORS[i % VARIANT_COLORS.length]}
+                      fill={color}
                       cursor="pointer"
-                    />
+                    >
+                      {hasCi && (
+                        <ErrorBar
+                          dataKey={ciKey(k)}
+                          width={4}
+                          strokeWidth={1}
+                          stroke={colors.errorBar}
+                        />
+                      )}
+                    </Bar>
                   )
                 })}
               </BarChart>
@@ -481,27 +410,36 @@ export default function OverviewChart({
           </div>
         </div>
 
-        <div ref={weatherScrollRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
+        <div ref={weatherRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[600px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={weatherOverviewData}
                 margin={{ top: 5, right: 0, left: 0, bottom: 5 }}
-                syncId={syncIdRef.current}
                 onClick={handleWeatherClick}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
                 <XAxis
-                  dataKey="dayLabel"
+                  dataKey="day"
+                  type="number"
+                  domain={[-0.5, Math.max(weatherOverviewData.length - 0.5, 0.5)]}
+                  ticks={weatherDayTicks}
+                  tickFormatter={weatherDayLabel}
                   stroke={colors.axis}
                   tick={{ fontSize: 11, fill: colors.axis }}
-                  scale="band"
                 />
                 <YAxis yAxisId="left" domain={[0, weatherLeftMax]} hide />
                 <YAxis yAxisId="right" orientation="right" domain={[0, weatherRightMax]} hide />
                 <Tooltip
                   trigger="hover"
-                  content={<WeatherTooltip forceHide={isTouch && !scrollTooltip} colors={colors} />}
+                  content={
+                    <WeatherTooltip
+                      forceHide={isTouch && !scrollTooltip}
+                      colors={colors}
+                      filterKeys={['air_temp', 'wind_kmh', 'rain_rate']}
+                      labelFormatter={(l) => weatherDayLabel(Number(l))}
+                    />
+                  }
                   cursor={isTouch ? false : { fill: colors.cursorFill }}
                 />
                 <Area
