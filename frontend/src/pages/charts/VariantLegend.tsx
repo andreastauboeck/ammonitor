@@ -31,7 +31,7 @@ export interface VariantLegendProps {
   swatch: LegendSwatch
   /** Optional per-variant CI controls (DetailChart). */
   ci?: CiLegendControls
-  /** Whether to render a "95% CI" chip at the end. */
+  /** Whether to render a "95% certainty" chip at the end. */
   showCiChip?: boolean
   /** Variant defs (subscript label-key + category hints) keyed by index. */
   variantDefs?: readonly VariantDef[]
@@ -165,10 +165,11 @@ function CiButton({
 }
 
 function CiChip({ swatch }: { swatch: LegendSwatch }) {
+  const { t } = useTranslation()
   if (swatch === 'bar') {
     return (
       <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
-        ─╴ 95% CI
+        ─╴ {t('charts.ci_label')}
       </span>
     )
   }
@@ -178,7 +179,7 @@ function CiChip({ swatch }: { swatch: LegendSwatch }) {
         className="inline-block w-3 h-2 rounded-sm"
         style={{ backgroundColor: 'rgba(148,163,184,0.12)' }}
       />
-      95% CI
+      {t('charts.ci_label')}
     </span>
   )
 }

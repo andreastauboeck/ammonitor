@@ -22,7 +22,6 @@ import { useHiddenValues } from '../lib/useHiddenValues'
 import { useCalculation } from '../lib/useCalculation'
 import { useCiFetcher } from '../lib/useCiFetcher'
 import { useReverseGeocode } from '../lib/useReverseGeocode'
-import { useIsTouch } from '../lib/useIsTouch'
 import { variantLabel } from '../lib/variantLabel'
 import { deserializeForm, useFormUrlSync } from '../lib/formUrlSync'
 import { applyFixedChange, applyVariableChange } from '../lib/formCascade'
@@ -68,19 +67,36 @@ export default function Calculation() {
   )
 
   // Logo expansion: on hover (desktop) or when scrolled to top (touch devices).
-  const isTouch = useIsTouch()
   const [iconHover, setIconHover] = useState(false)
   const [atTop, setAtTop] = useState(true)
+  const [hasScrollbar, setHasScrollbar] = useState(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const onScroll = () => setAtTop(window.scrollY <= 4)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
+    const updateScrollState = () => {
+      setAtTop(window.scrollY <= 4)
+      setHasScrollbar(document.documentElement.scrollHeight > window.innerHeight + 4)
+    }
+    updateScrollState()
+    window.addEventListener('scroll', updateScrollState, { passive: true })
+    window.addEventListener('resize', updateScrollState)
+    const raf = requestAnimationFrame(updateScrollState)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', updateScrollState)
+      window.removeEventListener('resize', updateScrollState)
+    }
   }, [])
 
-  const iconExpanded = iconHover || (isTouch && atTop)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    requestAnimationFrame(() => {
+      setHasScrollbar(document.documentElement.scrollHeight > window.innerHeight + 4)
+      setAtTop(window.scrollY <= 4)
+    })
+  }, [data, loading, selectedDay, formData.variable, showFarmSize])
+
+  const iconExpanded = iconHover || !hasScrollbar || atTop
 
   useEffect(() => {
     const controller = new AbortController()
@@ -171,7 +187,7 @@ export default function Calculation() {
 
   return (
     <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
-      <div className="sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 py-3">
+      <div className={`sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 transition-[padding] duration-200 ease-out ${iconExpanded ? 'py-3' : 'py-1'}`}>
         <div className="flex items-center gap-2">
           {selectedDay !== null ? (
             <button
@@ -237,7 +253,7 @@ export default function Calculation() {
           )}
         </div>
 
-        <div className="flex flex-col lg:grid lg:grid-cols-[18rem_minmax(0,1fr)_16rem] gap-4 lg:gap-6 items-stretch lg:h-[calc(100vh-11rem)] lg:min-h-[470px]">
+        <div className={`flex flex-col lg:grid lg:gap-6 items-stretch lg:min-h-[470px] ${iconExpanded ? 'lg:grid-cols-[18rem_minmax(0,1fr)_16rem] lg:h-[calc(100vh-11rem)]' : 'lg:grid-cols-[18rem_minmax(0,1fr)_16rem] lg:h-[calc(100vh-10rem)]'}`}>
           {/* Form panel — fixed width on lg+, full width below */}
           <div className={`w-full lg:w-auto lg:shrink-0 lg:min-h-0 lg:overflow-y-auto bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
             <div className="flex items-center gap-2 mb-3">

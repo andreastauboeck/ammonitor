@@ -64,13 +64,14 @@ function MapGestureHandling() {
     // If the map has the handler attached but it's not enabled, enable it.
     // Also, we can set the custom text options here.
     if ((map as any).gestureHandling) {
-      ;(map as any).gestureHandlingOptions = {
+      ;(map.options as any).gestureHandlingOptions = {
         text: {
           touch: t('map.gesture_touch'),
           scroll: t('map.gesture_scroll'),
           scrollMac: t('map.gesture_scroll_mac'),
         },
       }
+      ;(map as any).gestureHandling.disable()
       ;(map as any).gestureHandling.enable()
     }
   }, [map, t])

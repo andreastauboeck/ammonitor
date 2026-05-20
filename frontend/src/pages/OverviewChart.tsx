@@ -229,6 +229,16 @@ export default function OverviewChart({
     return niceMax(Math.max(m, 1))
   }, [weatherOverviewData])
 
+  const weatherDayTicks = useMemo(
+    () => weatherOverviewData.map((row) => row.day),
+    [weatherOverviewData],
+  )
+
+  const weatherDayLabel = (dayValue: number) => {
+    const row = weatherOverviewData.find((d) => d.day === dayValue)
+    return row?.dayLabel ?? String(dayValue)
+  }
+
   /** Overview CI accessor: reads `${k}_ci` (ErrorBar delta tuple) and
    *  reconstructs absolute bounds from the variant's own value. */
   const getCi = (entry: any) => {
@@ -437,10 +447,13 @@ export default function OverviewChart({
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
                 <XAxis
-                  dataKey="dayLabel"
+                  dataKey="day"
+                  type="number"
+                  domain={[-0.5, Math.max(weatherOverviewData.length - 0.5, 0.5)]}
+                  ticks={weatherDayTicks}
+                  tickFormatter={weatherDayLabel}
                   stroke={colors.axis}
                   tick={{ fontSize: 11, fill: colors.axis }}
-                  scale="band"
                 />
                 <YAxis yAxisId="left" domain={[0, weatherLeftMax]} hide />
                 <YAxis yAxisId="right" orientation="right" domain={[0, weatherRightMax]} hide />
@@ -451,6 +464,7 @@ export default function OverviewChart({
                       forceHide={isTouch && !scrollTooltip}
                       colors={colors}
                       filterKeys={['air_temp', 'wind_kmh', 'rain_rate']}
+                      labelFormatter={(l) => weatherDayLabel(Number(l))}
                     />
                   }
                   cursor={isTouch ? false : { fill: colors.cursorFill }}

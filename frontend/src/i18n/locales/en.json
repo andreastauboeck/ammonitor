@@ -217,10 +217,11 @@
     "air_temp": "Air temp (°C)",
     "wind": "Wind (km/h)",
     "rain": "Rain (mm)",
-    "fetch_ci": "Compute 95% confidence interval (bootstrap n=100)",
-    "refetch_ci": "Recompute 95% confidence interval",
-    "show_ci": "Show 95% confidence interval",
-    "hide_ci": "Hide 95% confidence interval"
+    "ci_label": "95% certainty",
+    "fetch_ci": "Compute 95% certainty interval (bootstrap n=100)",
+    "refetch_ci": "Recompute 95% certainty interval",
+    "show_ci": "Show 95% certainty interval",
+    "hide_ci": "Hide 95% certainty interval"
   },
   "time": {
     "hours_short": "{{n}}h",

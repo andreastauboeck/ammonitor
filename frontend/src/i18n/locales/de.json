@@ -217,10 +217,11 @@
     "air_temp": "Lufttemp (°C)",
     "wind": "Wind (km/h)",
     "rain": "Regen (mm)",
-    "fetch_ci": "95%-Konfidenzintervall berechnen (Bootstrap n=100)",
-    "refetch_ci": "95%-Konfidenzintervall neu berechnen",
-    "show_ci": "95%-Konfidenzintervall anzeigen",
-    "hide_ci": "95%-Konfidenzintervall ausblenden"
+    "ci_label": "95% Wahrscheinlichkeit",
+    "fetch_ci": "95%-Wahrscheinlichkeit berechnen (Bootstrap n=100)",
+    "refetch_ci": "95%-Wahrscheinlichkeit neu berechnen",
+    "show_ci": "95%-Wahrscheinlichkeit anzeigen",
+    "hide_ci": "95%-Wahrscheinlichkeit ausblenden"
   },
   "time": {
     "hours_short": "{{n}} h",
