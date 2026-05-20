@@ -4,7 +4,7 @@
 
 Ammonia (NH3) emission prediction and monitoring decision-support tool for agriculture. Uses the ALFAM2 model (R package) driven by weather forecasts (Open-Meteo) to predict NH3 loss from manure application across 8 days, comparing variants of application parameters.
 
-**Version:** See `VERSION` file at repo root (currently `0.3.0`)
+**Version:** See `VERSION` file at repo root (currently `0.4.0`)
 
 **Tech stack:** Python 3 / FastAPI / R (ALFAM2) / React 18 / TypeScript / Tailwind CSS / Recharts / Leaflet / i18next / Docker / Fly.io
 
@@ -51,8 +51,8 @@ Frontend renders:
 | File | Purpose | Key Exports/Functions |
 |------|---------|----------------------|
 | `VERSION` | Single-line version string | Read by CI pipeline for Docker image tagging |
-| `backend/main.py` | FastAPI app: API routes + SPA serving | `app`, `CalculateInput`, `VARIANT_VALUES` |
-| `backend/run_alfam2.py` | ALFAM2 R model runner | `run_alfam2()`, `_build_input_rows()`, `_parse_output()` |
+| `backend/main.py` | FastAPI app: API routes + SPA serving | `app`, `CalculateInput`, `CalculateCiInput`, `VARIANT_VALUES` |
+| `backend/run_alfam2.py` | ALFAM2 R model runner | `run_alfam2()` (multi-variant), `run_alfam2_single()` (single-scenario CI), `_build_input_rows()`, `_build_day_variant_rows()`, `_override_scalars()`, `_parse_output()` |
 | `backend/run_alfam2.R` | R-side ALFAM2 invocation | Called via `Rscript` |
 | `backend/weather.py` | Open-Meteo forecast fetcher | `fetch_weather()` |
 | `backend/requirements.txt` | Python dependencies | `fastapi`, `uvicorn` |
@@ -60,11 +60,24 @@ Frontend renders:
 | `frontend/src/i18n/index.ts` | i18next initialization | Detection: localStorage → navigator → en |
 | `frontend/src/i18n/locales/{en,de}.json` | Translation maps | Nested keys: `variables.*`, `variants.*`, `categories.*`, etc. |
 | `frontend/src/components/LanguageSwitcher.tsx` | EN/DE toggle | `i18n.changeLanguage()` |
+| `frontend/src/components/CostSummaryCard.tsx` | Best/worst variant + EUR/ha saving panel | Receives `data`, `formData`, `hiddenValues`, `selectedDay` |
+| `frontend/src/lib/rechartsKeys.ts` | Recharts-safe dataKey helpers (dots → underscores) | `valueToKey()`, `ciKey()`, `lwrKey()`, `ciDeltaKey()`, `CI_DELTA_SUFFIX` |
+| `frontend/src/lib/variantLabel.ts` | i18n display label for a variant value | `variantLabel(t, variable, value, def?)` |
+| `frontend/src/lib/useIsTouch.ts` | Touch-device detection hook | `useIsTouch()` |
+| `frontend/src/lib/useHiddenValues.ts` | Per-variable hidden-variant set persisted to localStorage | `useHiddenValues(variable, values)` |
+| `frontend/src/lib/useCalculation.ts` | `/api/calculate` POST effect | `useCalculation({lat, lng, formData})` returns `{data, setData, loading, error}` |
+| `frontend/src/lib/useCiFetcher.ts` | `/api/calculate-ci` POST + visibility toggle | `useCiFetcher({...})` returns `{ciLoadingValues, ciVisibleValues, handleCiClick}` |
+| `frontend/src/lib/useReverseGeocode.ts` | Nominatim reverse-geocode hook | `useReverseGeocode(lat, lng)` |
+| `frontend/src/lib/formUrlSync.ts` | URL ↔ FormData (de)serialization | `serializeForm`, `deserializeForm`, `useFormUrlSync` |
+| `frontend/src/lib/formCascade.ts` | Pure cascading rules for form changes | `applyFixedChange`, `applyVariableChange` |
+| `frontend/src/pages/charts/EmissionTooltip.tsx` | Shared variant-emission tooltip | `getCi`-parametrised so Overview + Detail can both use it |
+| `frontend/src/pages/charts/WeatherTooltip.tsx` | Shared weather tooltip | Optional `filterKeys` + `labelFormatter` |
+| `frontend/src/pages/charts/VariantLegend.tsx` | Clickable variant pills + optional CI button | `swatch: 'bar' \| 'line'`, optional `ci` controls |
 | `frontend/src/pages/types.ts` | Shared types, constants, utilities | `VARIANT_DEFS`, `DEFAULT_FORM_DATA`, `VARIANT_COLORS`, `ApiResponse`, `FormData` |
 | `frontend/src/pages/Home.tsx` | Leaflet map location selector | Search + click → navigate to calculation |
-| `frontend/src/pages/Calculation.tsx` | Parameter form + chart orchestration | Form state, API calls, URL param sync |
-| `frontend/src/pages/OverviewChart.tsx` | 8-day grouped bar chart + weather sub-chart | Click bar → detail view; weather min/max area bands |
-| `frontend/src/pages/DetailChart.tsx` | Hourly line chart + weather | Log-scale x-axis, app_time offset, incorp markers |
+| `frontend/src/pages/Calculation.tsx` | Parameter form + chart orchestration (slim; logic in hooks) | Wires `useCalculation`, `useCiFetcher`, `useReverseGeocode`, `useHiddenValues`, form cascade |
+| `frontend/src/pages/OverviewChart.tsx` | 8-day grouped bar chart + weather sub-chart | Click bar → detail view; ErrorBar overlays from CI |
+| `frontend/src/pages/DetailChart.tsx` | Hourly line chart + weather | Log-scale x-axis, app_time offset, incorp markers, stacked-Area CI |
 | `Dockerfile` | Multi-stage production build | r-base → frontend-build → runtime |
 | `fly.toml` | Fly.io deployment config | App: ammonitor, region: fra, port: 8000 |
 | `.github/workflows/deploy.yml` | CI/CD: build → push → deploy | VERSION file → Docker tags → Fly.io |
@@ -122,10 +135,40 @@ Frontend renders:
 
 - `days[].variants` is an **ordered array** (matches the request `values` order). Each item has a stable `value` ID, the final percent loss, and the 168-hour `hourly` curve.
 - All variant identifiers are stable (no display strings). Frontend translates them via i18n.
+- The fast `/api/calculate` path does **not** request bootstrap CI from R, so `final_loss_lwr/upr` and `er_lwr/upr` are absent. Use `/api/calculate-ci` for one variant at a time when CI is desired.
+
+### `POST /api/calculate-ci`
+
+Single-scenario, single-day variant of `/api/calculate` with bootstrap confidence intervals. Bootstrap (`n_ci=100` default) is expensive (~1–3 s per day on small VMs), which is why CI is opt-in per variant and per day from the frontend.
+
+**Design note:** unlike `/api/calculate`, there is no `variable` / `value` discriminator. The caller pre-resolves every scalar (`app_mthd`, `app_time`, `man_dm`, `man_ph`, `man_source`, `incorp_depth`, `incorp_time`) into the body — whichever variant they want the CI for, they just set the corresponding scalar field. The frontend's `useCiFetcher` does the resolution and tracks the originating variant locally.
+
+**Request body:**
+- `lat`, `lng`, `timezone` — same as `/api/calculate`
+- `day` — day index 0–7 (which forecast day to compute)
+- `app_mthd`, `app_time`, `man_dm`, `man_ph`, `man_source`, `incorp_depth`, `incorp_time` — resolved scalars
+- `conf_int` — default 0.95
+- `n_ci` — default 100
+
+**Response:**
+```json
+{
+  "day": 0,
+  "start": "2026-04-28T12:00",
+  "variant": {
+    "final_loss_pct": 53.66,
+    "final_loss_lwr": 48.1,
+    "final_loss_upr": 59.2,
+    "hourly": [{"hour": 1, "er": 0.12, "er_lwr": 0.09, "er_upr": 0.15}, ...]
+  }
+}
+```
+
+The response does not echo a `value`/`variable`. The frontend knows which variant it requested, preserves the original `value` on the merged variant, and updates `data.days[day].variants[i]` accordingly. ErrorBar overlays on the overview chart's bars then appear automatically. Backend internally uses `run_alfam2_single(..., day_indices=[day])` so only that one day's scenario is bootstrapped.
 
 ### `GET /api/status`
 
-Returns `{"status": "ok", "version": "0.3.0", "environment": "production"}`
+Returns `{"status": "ok", "version": "0.4.0", "environment": "production"}`
 
 ---
 
@@ -146,7 +189,10 @@ Returns `{"status": "ok", "version": "0.3.0", "environment": "production"}`
 - **Theme (light/dark):** Tailwind `darkMode: 'class'`. `ThemeProvider` in `src/theme/ThemeContext.tsx` manages mode (`light` | `dark` | `system`), persists to `localStorage["ammonitor-theme"]`, defaults to `system` (follows `prefers-color-scheme`). FOUC-prevention inline script in `index.html` applies `dark` class on `<html>` and updates `<meta name="theme-color">` before React mounts. Recharts colors come from `src/theme/chartColors.ts` (`getChartColors(resolved)`) — passed as props into custom tooltips since Recharts doesn't read CSS classes for `stroke`/`fill`.
 - **Settings menu:** `SettingsMenu` (`src/components/SettingsMenu.tsx`) is a cog button + popover that contains `ThemeSwitcher` + `LanguageSwitcher` stacked. Used in Home top bar, Calculation sticky bar, and all legal pages. Click-outside / Escape closes.
 - **Site icon:** `SiteIcon` (`src/components/SiteIcon.tsx`) renders a small rounded amber tile with `/logo.png` inside — used in the Calculation sticky bar so the logo always identifies the app at a glance.
-- **Map gestures:** `leaflet-gesture-handling` plugin requires Ctrl + scroll (or ⌘ + scroll on macOS) to zoom on desktop, and two-finger pan on mobile. Prevents the map from hijacking page scroll/swipe. Registered globally via `L.Map.addInitHook('addHandler', 'gestureHandling', GestureHandling)` in `Home.tsx`. Hint strings come from i18n (`map.gesture_*`).---
+- **Map gestures:** `leaflet-gesture-handling` plugin requires Ctrl + scroll (or ⌘ + scroll on macOS) to zoom on desktop, and two-finger pan on mobile. Prevents the map from hijacking page scroll/swipe. Registered globally via `L.Map.addInitHook('addHandler', 'gestureHandling', GestureHandling)` in `Home.tsx`. Hint strings come from i18n (`map.gesture_*`).
+- **Cost translation layer:** `src/lib/costs.ts` is the single source of truth for converting ALFAM2's `final_loss_pct` into kg N/ha and €/ha. Reference fertilizer prices live in `FERTILIZER_PRESETS` (`pages/types.ts`) with a `FERTILIZER_PRICES_DATE` constant — update both together when refreshing prices. The shared `<UnitToggle>` (`components/UnitToggle.tsx`) drives `formData.chartUnit` (`kgha` | `eur`); the left y-axis is always "% of TAN" (static), while the right y-axis switches between kg/ha and €/ha based on the toggle. Both `OverviewChart` and `DetailChart` follow this pattern. The `<CostSummaryCard>` (`components/CostSummaryCard.tsx`) lives in the third (right-hand) column of `Calculation.tsx` on `lg:` and stacks below the chart on narrower screens; it uses `computeCostSummary()` with an optional `dayFilter` arg to derive best/worst variant (8-day average in overview, single-day in detail) and the EUR/ha saving, with an optional yearly figure when farm size is set. The right panel is always visible (when data is loaded) so the fertilizer dropdown stays available in both overview and detail views. New URL params: `fert`, `eurkgn` (only when `fert=custom`), `farmha`, `unit`. Currency formatting uses `Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' })` so DE shows `1.234,00 €` and EN shows `€1,234.00`.
+- **Calculation layout:** 3-column grid on `lg:` (`lg:grid-cols-[18rem_minmax(0,1fr)_16rem]`) — params (fixed left), chart (flexible center, `flex-1 min-h-[320px] h-[60vh] md:h-[calc(100vh-18rem)]`), cost summary (fixed right). Below `lg:` the columns stack vertically so the chart still gets its full height. Page max-width raised to `xl:max-w-7xl` to fit the third column comfortably.
+- **Legend toggle state:** the per-variable hidden-variant set lives in `src/lib/useHiddenValues.ts` (hook). Persisted to `localStorage["ammonitor-hidden-${variableName}"]` so each variable keeps its own preferences across reloads and variable switches. `useHiddenValues` is called once in `Calculation.tsx` and the result (`hiddenValues`, `toggleValue`) is passed both to `OverviewChart` (which renders the clickable legend) and to `CostSummaryCard` (which filters best/worst). The toggle enforces a minimum of 2 visible variants. Recharts dataKeys go through `valueToKey(v) = String(v).replace(/\./g, '_')` because Recharts treats dots in `dataKey` strings as nested-property paths.---
 
 ## Backend Conventions
 

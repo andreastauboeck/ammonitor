@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   LineChart,
   Line,
+  Area,
   ComposedChart,
   XAxis,
   YAxis,
@@ -13,132 +14,32 @@ import {
 } from 'recharts'
 import {
   type ApiResponse,
+  type ChartUnit,
   type FormData,
   type WeatherPoint,
-  type VariableName,
   VARIANT_COLORS,
   niceMax,
 } from './types'
 import { useTheme } from '../theme/ThemeContext'
-import { getChartColors, type ChartColors } from '../theme/chartColors'
-
-function variantLabel(t: any, variable: VariableName, value: string | number): string {
-  return t(`variants.${variable}.${value}`, { defaultValue: String(value) })
-}
-
-interface EmissionTooltipProps {
-  active?: boolean
-  payload?: any[]
-  label?: string | number
-  tanApp: number
-  labelFormatter?: (l: any) => string
-  valueKeys: string[]
-  forceHide?: boolean
-  unit: string
-  colors: ChartColors
-}
-
-function EmissionTooltip({
-  active,
-  payload,
-  label,
-  tanApp,
-  labelFormatter,
-  valueKeys,
-  forceHide,
-  unit,
-  colors,
-}: EmissionTooltipProps) {
-  if (!active || !payload || payload.length === 0) return null
-  if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
-
-  const variantEntries = payload.filter((p: any) =>
-    valueKeys.includes(p.dataKey as any),
-  )
-  const otherEntries = payload.filter(
-    (p: any) => !valueKeys.includes(p.dataKey as any),
-  )
-
-  const labelText = labelFormatter ? labelFormatter(label) : label
-
-  return (
-    <div
-      style={{
-        backgroundColor: colors.tooltipBg,
-        border: `1px solid ${colors.tooltipBorder}`,
-        borderRadius: '6px',
-        padding: '4px 6px',
-        fontSize: '10px',
-        color: colors.tooltipText,
-        lineHeight: '1.25',
-      }}
-    >
-      <div style={{ fontWeight: 600 }}>{labelText}</div>
-      {variantEntries.map((entry: any) => {
-        const pct = entry.value as number
-        const kg = (pct * tanApp) / 100
-        return (
-          <div key={entry.dataKey} style={{ color: entry.color }}>
-            {entry.name}: {pct.toFixed(1)}% ({kg.toFixed(1)} {unit})
-          </div>
-        )
-      })}
-      {otherEntries.map((entry: any) => (
-        <div key={entry.dataKey} style={{ color: entry.color }}>
-          {entry.name}: {entry.value}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-interface WeatherTooltipProps {
-  active?: boolean
-  payload?: any[]
-  label?: string | number
-  labelFormatter?: (l: any) => string
-  forceHide?: boolean
-  colors: ChartColors
-}
-
-function WeatherTooltip({ active, payload, label, labelFormatter, forceHide, colors }: WeatherTooltipProps) {
-  if (!active || !payload || payload.length === 0) return null
-  if (forceHide) return <div style={{ visibility: 'hidden', height: 0 }} />
-  const labelText = labelFormatter ? labelFormatter(label) : label
-  return (
-    <div
-      style={{
-        backgroundColor: colors.tooltipBg,
-        border: `1px solid ${colors.tooltipBorder}`,
-        borderRadius: '6px',
-        padding: '4px 6px',
-        fontSize: '10px',
-        color: colors.tooltipText,
-        lineHeight: '1.25',
-      }}
-    >
-      <div style={{ fontWeight: 600 }}>{labelText}</div>
-      {payload.map((entry: any) => (
-        <div key={entry.dataKey} style={{ color: entry.color }}>
-          {entry.name}: {entry.value}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function useIsTouch() {
-  const [isTouch, setIsTouch] = useState(false)
-  useEffect(() => {
-    const check = () =>
-      typeof window !== 'undefined' &&
-      ('ontouchstart' in window ||
-        navigator.maxTouchPoints > 0 ||
-        window.matchMedia('(pointer: coarse)').matches)
-    setIsTouch(check())
-  }, [])
-  return isTouch
-}
+import { getChartColors } from '../theme/chartColors'
+import {
+  formatEur,
+  getEurPerKgN,
+  pctToEurPerHa,
+  pctToKgPerHa,
+} from '../lib/costs'
+import {
+  CI_DELTA_SUFFIX,
+  ciDeltaKey,
+  lwrKey,
+  valueToKey,
+} from '../lib/rechartsKeys'
+import { variantLabel } from '../lib/variantLabel'
+import { useChartScroll } from '../lib/useChartScroll'
+import { useTouchTooltip } from '../lib/useTouchTooltip'
+import EmissionTooltip from './charts/EmissionTooltip'
+import WeatherTooltip from './charts/WeatherTooltip'
+import VariantLegend from './charts/VariantLegend'
 
 interface IncorpMarker {
   hour: number
@@ -151,6 +52,16 @@ interface DetailChartProps {
   data: ApiResponse
   day: number
   formData: FormData
+  hiddenValues: Set<string>
+  toggleValue: (value: string) => void
+  /** Optional CI button handler. When provided, a stats-icon button is
+   *  shown per variant in the legend. First click triggers a fetch + makes
+   *  the band visible; subsequent clicks toggle visibility (no refetch). */
+  onCiClick?: (value: string | number, day: number) => void
+  /** Set of `${valueKey}:${day}` currently being fetched. */
+  ciLoadingValues?: Set<string>
+  /** Set of variant values whose CI band is currently visible. */
+  ciVisibleValues?: Set<string>
 }
 
 function makeTimeIso(d: Date): string {
@@ -158,55 +69,45 @@ function makeTimeIso(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-export default function DetailChart({ data, day, formData }: DetailChartProps) {
-  const { t } = useTranslation()
+export default function DetailChart({
+  data,
+  day,
+  formData,
+  hiddenValues,
+  toggleValue,
+  onCiClick,
+  ciLoadingValues,
+  ciVisibleValues,
+}: DetailChartProps) {
+  const { t, i18n } = useTranslation()
   const { resolved } = useTheme()
   const colors = getChartColors(resolved)
-  const emissionScrollRef = useRef<HTMLDivElement>(null)
-  const weatherScrollRef = useRef<HTMLDivElement>(null)
-  const isSyncingRef = useRef(false)
-  const isTouch = useIsTouch()
+  const { active: touchTooltipActive, touchStart, touchDismiss } = useTouchTooltip(4000)
+  const { emissionRef, weatherRef, syncScroll, isTouch } = useChartScroll({ onScroll: () => touchDismiss() })
+  const eurPerKgN = getEurPerKgN(formData)
+  const chartUnit: ChartUnit = formData.chartUnit
+  const tanApp = formData.tanApp
+  const locale = i18n.language
+  const kgUnitLabel = t('units.kg_per_ha')
   const tooltipTrigger: 'click' | 'hover' = isTouch ? 'click' : 'hover'
-  const [touchTooltipActive, setTouchTooltipActive] = useState(false)
-  const autoDismissRef = useRef<ReturnType<typeof setTimeout>>()
-  const syncIdRef = useRef(`detail-${Math.random().toString(36).slice(2)}`)
 
   const handleChartClick = (e: any) => {
-    if (!isTouch) return
-    if (e && e.activeTooltipIndex != null) {
-      setTouchTooltipActive(true)
-      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
-      autoDismissRef.current = setTimeout(() => setTouchTooltipActive(false), 4000)
-    } else {
-      setTouchTooltipActive(false)
-      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
-    }
-  }
-
-  useEffect(() => {
-    return () => {
-      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
-    }
-  }, [])
-
-  const syncScroll = (source: 'emission' | 'weather') => () => {
-    if (isSyncingRef.current) return
-    if (isTouch && touchTooltipActive) {
-      setTouchTooltipActive(false)
-      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
-    }
-    const src = source === 'emission' ? emissionScrollRef.current : weatherScrollRef.current
-    const tgt = source === 'emission' ? weatherScrollRef.current : emissionScrollRef.current
-    if (!src || !tgt) return
-    isSyncingRef.current = true
-    tgt.scrollLeft = src.scrollLeft
-    requestAnimationFrame(() => { isSyncingRef.current = false })
+    if (e && e.activeTooltipIndex != null) touchStart()
+    else touchDismiss()
   }
 
   const dayData = data.days.find((d) => d.day === day)
   const variableName = data.variable
   const values = data.values
-  const valueKeys = values.map((v) => String(v))
+  const valueKeys = useMemo(() => values.map((v) => valueToKey(v)), [values])
+  const visibleValues = useMemo(
+    () => values.filter((v) => !hiddenValues.has(String(v))),
+    [values, hiddenValues],
+  )
+  const visibleValueKeys = useMemo(
+    () => visibleValues.map((v) => valueToKey(v)),
+    [visibleValues],
+  )
   const isAppTimeVariable = variableName === 'app_time'
 
   const variantOffsets = useMemo(() => {
@@ -245,11 +146,11 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     const byKey: Record<string, Record<string, any>> = {}
 
     for (const variant of dayData.variants) {
-      const key = String(variant.value)
+      const key = valueToKey(variant.value)
 
       let offset = 0
       if (isAppTimeVariable && variantOffsets) {
-        const vo = variantOffsets.find((v) => String(v.value) === key)
+        const vo = variantOffsets.find((v) => valueToKey(v.value) === key)
         offset = vo ? vo.offsetFromEarliest : 0
       }
 
@@ -270,6 +171,8 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           }
         }
         byKey[zeroKey][key] = 0
+        byKey[zeroKey][lwrKey(key)] = 0
+        byKey[zeroKey][ciDeltaKey(key)] = 0
       }
 
       for (const p of variant.hourly) {
@@ -289,9 +192,52 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           }
         }
         byKey[k][key] = +(p.er * 100).toFixed(2)
+        if (p.er_lwr != null && p.er_upr != null) {
+          const lwr = +(p.er_lwr * 100).toFixed(2)
+          const upr = +(p.er_upr * 100).toFixed(2)
+          byKey[k][lwrKey(key)] = lwr
+          byKey[k][ciDeltaKey(key)] = +(upr - lwr).toFixed(2)
+        }
       }
     }
-    return Object.values(byKey).sort((a, b) => a.hour - b.hour)
+
+    // Forward-fill CI bounds across "intermediate" rows (e.g. zero-hour
+    // rows inserted by later-starting variants in app_time mode). Without
+    // this, the stacked Area for an earlier variant breaks at every
+    // intermediate row where it has no integer-hour data point.
+    const sortedRows = Object.values(byKey).sort((a, b) => a.hour - b.hour)
+    const variantsWithCi = dayData.variants.filter((v) =>
+      v.hourly.some((p) => p.er_lwr != null),
+    )
+    for (const variant of variantsWithCi) {
+      const ck = valueToKey(variant.value)
+      // Determine the variant's hour range in chart coordinates so we
+      // don't forward-fill past its actual last data point.
+      let offset = 0
+      if (isAppTimeVariable && variantOffsets) {
+        const vo = variantOffsets.find((v) => valueToKey(v.value) === ck)
+        offset = vo ? vo.offsetFromEarliest : 0
+      }
+      const firstHour = offset > 0 ? offset + 0.1 : 1
+      const lastHour = variant.hourly.length > 0
+        ? variant.hourly[variant.hourly.length - 1].hour + offset
+        : 0
+      let lastLwr: number | null = null
+      let lastDelta: number | null = null
+      for (const row of sortedRows) {
+        const h = row.hour as number
+        if (h < firstHour || h > lastHour) continue
+        if (row[lwrKey(ck)] != null) {
+          lastLwr = row[lwrKey(ck)] as number
+          lastDelta = row[ciDeltaKey(ck)] as number
+        } else {
+          row[lwrKey(ck)] = lastLwr ?? 0
+          row[ciDeltaKey(ck)] = lastDelta ?? 0
+        }
+      }
+    }
+
+    return sortedRows
   }, [dayData, weatherByTime, isAppTimeVariable, variantOffsets, earliestAppHour, t])
 
   const maxHour = useMemo(() => {
@@ -302,13 +248,16 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
   const detailMax = useMemo(() => {
     let m = 0
     for (const row of detailData as any[]) {
-      for (const k of valueKeys) {
+      for (const k of visibleValueKeys) {
         const v = (row[k] ?? 0) as number
-        if (v > m) m = v
+        const vLwr = (row[lwrKey(k)] ?? v) as number
+        const vDelta = (row[ciDeltaKey(k)] ?? 0) as number
+        const vUpr = vLwr + vDelta
+        if (vUpr > m) m = vUpr
       }
     }
     return niceMax(m)
-  }, [detailData, valueKeys])
+  }, [detailData, visibleValueKeys])
 
   const weatherLeftMax = useMemo(() => {
     let m = 0
@@ -330,6 +279,20 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     return niceMax(Math.max(m, 1))
   }, [detailData])
 
+  const hasCiData = useMemo(() => {
+    if (!dayData) return false
+    return dayData.variants.some((v) => v.hourly.some((p) => p.er_lwr != null))
+  }, [dayData])
+
+  const ciByValue = useMemo(() => {
+    const s = new Set<string>()
+    if (!dayData) return s
+    for (const v of dayData.variants) {
+      if (v.hourly.some((p) => p.er_lwr != null)) s.add(String(v.value))
+    }
+    return s
+  }, [dayData])
+
   const incorpMarkers: IncorpMarker[] = useMemo(() => {
     if (formData.incorpDepth === 'none') return []
     if (!detailData.length) return []
@@ -337,6 +300,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     if (variableName === 'incorp_time') {
       const markers: IncorpMarker[] = []
       values.forEach((value, i) => {
+        if (hiddenValues.has(String(value))) return
         const hour = typeof value === 'number' ? value : parseFloat(String(value))
         if (isNaN(hour) || hour < 0) return
         let xHour = hour === 0 ? 1 : hour
@@ -357,15 +321,18 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     const markerHour = targetHour === 0 ? 1 : targetHour
 
     if (isAppTimeVariable && variantOffsets) {
-      return values.map((value, i) => {
-        const offset = variantOffsets[i].offsetFromEarliest
-        return {
-          hour: markerHour + offset,
-          label: `${variantLabel(t, 'app_time', value)} — ${t('detail.incorp_marker', { depth: t(`variants.incorp_depth.${formData.incorpDepth}`), hours: formData.incorpTime })}`,
-          color: VARIANT_COLORS[i % VARIANT_COLORS.length],
-          hideLabel: true,
-        }
-      })
+      return values
+        .map((value, i) => ({ value, i }))
+        .filter(({ value }) => !hiddenValues.has(String(value)))
+        .map(({ value, i }) => {
+          const offset = variantOffsets[i].offsetFromEarliest
+          return {
+            hour: markerHour + offset,
+            label: `${variantLabel(t, 'app_time', value)} — ${t('detail.incorp_marker', { depth: t(`variants.incorp_depth.${formData.incorpDepth}`), hours: formData.incorpTime })}`,
+            color: VARIANT_COLORS[i % VARIANT_COLORS.length],
+            hideLabel: true,
+          }
+        })
     }
 
     const closest = (detailData as any[]).reduce((prev: any, curr: any) =>
@@ -377,7 +344,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
       label: t('detail.incorp_marker', { depth: t(`variants.incorp_depth.${formData.incorpDepth}`), hours: formData.incorpTime }),
       color: '#fbbf24',
     }]
-  }, [detailData, formData.incorpDepth, formData.incorpTime, variableName, values, isAppTimeVariable, variantOffsets, t])
+  }, [detailData, formData.incorpDepth, formData.incorpTime, variableName, values, isAppTimeVariable, variantOffsets, hiddenValues, t])
 
   const logTicks = useMemo(() => {
     const ticks = [1, 2, 4, 8, 24, 48, 96, 168]
@@ -397,22 +364,42 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
     }
   }, [isAppTimeVariable, dayData, earliestAppHour, t])
 
+  /** Detail CI accessor: reads `${k}_lwr` + `${k}_ci_delta` from the row
+   *  payload and returns absolute lwr/upr bounds. */
+  const getCi = (entry: any) => {
+    const row = entry?.payload
+    if (!row) return null
+    const lwr = row[lwrKey(entry.dataKey as string)]
+    const delta = row[ciDeltaKey(entry.dataKey as string)]
+    if (lwr == null || delta == null) return null
+    return { lwr: lwr as number, upr: (lwr as number) + (delta as number) }
+  }
+
+  const isCiKey = (dk: string) => dk.endsWith('_lwr') || dk.endsWith(CI_DELTA_SUFFIX)
+
   if (!dayData) return null
+
+  const ciControls = onCiClick
+    ? {
+        fetchedValues: ciByValue,
+        visibleValues: ciVisibleValues ?? new Set<string>(),
+        loadingValues: ciLoadingValues ?? new Set<string>(),
+        onCiClick,
+        day,
+      }
+    : undefined
 
   return (
     <>
-      {/* Fixed legend for emission chart */}
-      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-700 dark:text-slate-300 mb-1 shrink-0">
-        {values.map((value, i) => (
-          <span key={String(value)} className="inline-flex items-center gap-1">
-            <span
-              className="inline-block w-3 h-0.5"
-              style={{ backgroundColor: VARIANT_COLORS[i % VARIANT_COLORS.length] }}
-            />
-            {variantLabel(t, variableName, value)}
-          </span>
-        ))}
-      </div>
+      <VariantLegend
+        values={values}
+        variableName={variableName}
+        hiddenValues={hiddenValues}
+        toggleValue={toggleValue}
+        swatch="line"
+        ci={ciControls}
+        showCiChip={hasCiData}
+      />
 
       {/* === EMISSION CHART === */}
       <div className="flex-[3] min-h-0 flex">
@@ -434,6 +421,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   stroke={colors.axis}
                   tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, detailMax]}
+                  tickFormatter={(v: number) => v.toFixed(0)}
                   width={30}
                 />
                 <XAxis dataKey="hour" hide />
@@ -442,13 +430,12 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           </div>
         </div>
 
-        <div ref={emissionScrollRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
+        <div ref={emissionRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[400px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart
+              <ComposedChart
                 data={detailData}
                 margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
-                syncId={syncIdRef.current}
                 onClick={isTouch ? handleChartClick : undefined}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
@@ -470,29 +457,74 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                   wrapperStyle={isTouch && !touchTooltipActive ? { visibility: 'hidden' } : undefined}
                   content={
                     <EmissionTooltip
-                      tanApp={formData.tanApp}
+                      tanApp={tanApp}
                       labelFormatter={fmtLabel}
                       valueKeys={valueKeys}
                       forceHide={isTouch && !touchTooltipActive}
-                      unit={t('units.kg_per_ha')}
                       colors={colors}
+                      chartUnit={chartUnit}
+                      eurPerKgN={eurPerKgN}
+                      locale={locale}
+                      kgUnitLabel={kgUnitLabel}
+                      getCi={getCi}
+                      showExtraEntries
+                      isCiKey={isCiKey}
                     />
                   }
                 />
-                {values.map((value, i) => (
-                  <Line
-                    key={String(value)}
-                    type="monotone"
-                    dataKey={String(value)}
-                    name={variantLabel(t, variableName, value)}
-                    yAxisId="left"
-                    stroke={VARIANT_COLORS[i % VARIANT_COLORS.length]}
-                    dot={false}
-                    strokeWidth={2}
-                    connectNulls
-                    activeDot={isTouch ? (touchTooltipActive ? { r: 4, strokeWidth: 0 } : false) : undefined}
-                  />
-                ))}
+                {visibleValues.map((value) => {
+                  const i = values.indexOf(value)
+                  const k = valueToKey(value)
+                  const color = VARIANT_COLORS[i % VARIANT_COLORS.length]
+                  const ciVisible = ciVisibleValues?.has(String(value)) ?? false
+                  const hasCi = ciVisible && detailData.some((r: any) => r[lwrKey(k)] != null)
+                  return (
+                    <Fragment key={k}>
+                      {hasCi && (
+                        <>
+                          <Area
+                            yAxisId="left"
+                            type="monotone"
+                            dataKey={lwrKey(k)}
+                            stackId={`ci-${k}`}
+                            stroke="none"
+                            fill="transparent"
+                            fillOpacity={0}
+                            dot={false}
+                            activeDot={false}
+                            isAnimationActive={false}
+                            connectNulls
+                          />
+                          <Area
+                            yAxisId="left"
+                            type="monotone"
+                            dataKey={ciDeltaKey(k)}
+                            stackId={`ci-${k}`}
+                            stroke={color}
+                            strokeWidth={0}
+                            fill={color}
+                            fillOpacity={0.12}
+                            dot={false}
+                            activeDot={false}
+                            isAnimationActive={false}
+                            connectNulls
+                          />
+                        </>
+                      )}
+                      <Line
+                        type="monotone"
+                        dataKey={k}
+                        name={variantLabel(t, variableName, value)}
+                        yAxisId="left"
+                        stroke={color}
+                        dot={false}
+                        strokeWidth={2}
+                        connectNulls
+                        activeDot={isTouch ? (touchTooltipActive ? { r: 4, strokeWidth: 0 } : false) : undefined}
+                      />
+                    </Fragment>
+                  )
+                })}
                 {incorpMarkers.map((m) => (
                   <ReferenceLine
                     key={m.hour + '-' + m.color}
@@ -509,29 +541,30 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
                     }}
                   />
                 ))}
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         <div className="flex shrink-0 h-full">
-          <div style={{ width: 30 }} className="h-full">
+          <div style={{ width: chartUnit === 'eur' ? 44 : 36 }} className="h-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={detailData}
                 margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
               >
                 <YAxis
-                  key={`detail-right-${detailMax}-${formData.tanApp}-${resolved}`}
+                  key={`detail-right-${detailMax}-${tanApp}-${eurPerKgN}-${chartUnit}-${resolved}`}
                   yAxisId="right"
                   orientation="right"
                   stroke={colors.axis}
                   tick={{ fontSize: 9, fill: colors.axis }}
                   domain={[0, detailMax]}
-                  tickFormatter={(v: number) =>
-                    ((v * formData.tanApp) / 100).toFixed(1)
-                  }
-                  width={30}
+                  tickFormatter={(v: number) => {
+                    if (chartUnit === 'kgha') return pctToKgPerHa(v, tanApp).toFixed(1)
+                    return formatEur(pctToEurPerHa(v, tanApp, eurPerKgN), locale)
+                  }}
+                  width={chartUnit === 'eur' ? 44 : 36}
                 />
                 <XAxis dataKey="hour" hide />
               </LineChart>
@@ -539,7 +572,7 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           </div>
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-              {t('charts.nh3_loss_kgha')}
+              {chartUnit === 'eur' ? t('charts.nh3_loss_eur') : t('charts.nh3_loss_kgha')}
             </span>
           </div>
         </div>
@@ -589,13 +622,12 @@ export default function DetailChart({ data, day, formData }: DetailChartProps) {
           </div>
         </div>
 
-        <div ref={weatherScrollRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
+        <div ref={weatherRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
           <div className="h-full min-w-[400px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={detailData}
                 margin={{ top: 5, right: 0, left: 0, bottom: 5 }}
-                syncId={syncIdRef.current}
                 onClick={isTouch ? handleChartClick : undefined}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />

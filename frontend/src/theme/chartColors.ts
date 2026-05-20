@@ -9,6 +9,7 @@ export interface ChartColors {
   cursorFill: string   // hover cursor highlight
   legend: string       // legend text
   axisLabel: string    // small vertical labels
+  errorBar: string     // confidence-interval whiskers (high contrast vs bar fills)
 }
 
 export function getChartColors(theme: ResolvedTheme): ChartColors {
@@ -22,6 +23,7 @@ export function getChartColors(theme: ResolvedTheme): ChartColors {
       cursorFill: 'rgba(148, 163, 184, 0.1)',
       legend: '#cbd5e1',        // slate-300
       axisLabel: '#94a3b8',     // slate-400
+      errorBar: '#e2e8f0',      // slate-200 (near-white on dark bg)
     }
   }
   // light
@@ -34,5 +36,6 @@ export function getChartColors(theme: ResolvedTheme): ChartColors {
     cursorFill: 'rgba(71, 85, 105, 0.08)',
     legend: '#475569',         // slate-600
     axisLabel: '#64748b',      // slate-500
+    errorBar: '#0f172a',       // slate-900 (near-black on light bg)
   }
 }

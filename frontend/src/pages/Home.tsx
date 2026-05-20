@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'
 import type { Map } from 'leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -9,7 +9,6 @@ import 'leaflet-gesture-handling/dist/leaflet-gesture-handling.css'
 import { GestureHandling } from 'leaflet-gesture-handling'
 import SettingsMenu from '../components/SettingsMenu'
 
-// Register the gesture handler globally so MapContainer can opt-in via prop.
 ;(L.Map as any).addInitHook('addHandler', 'gestureHandling', GestureHandling)
 
 const customIcon = L.icon({
@@ -21,6 +20,22 @@ const customIcon = L.icon({
   shadowSize: [80, 80],
   shadowAnchor: [23, 80],
 })
+
+function MapGestureHandling() {
+  const map = useMap()
+  const { t } = useTranslation()
+  useEffect(() => {
+    if ((map as any).gestureHandling) {
+      ;(map as any).gestureHandlingOptions = {
+        touch: t('map.gesture_touch'),
+        scroll: t('map.gesture_scroll'),
+        scrollMac: t('map.gesture_scroll_mac'),
+      }
+      ;(map as any).gestureHandling.enable()
+    }
+  }, [map, t])
+  return null
+}
 
 interface BackendStatus {
   status: string
@@ -299,9 +314,10 @@ export default function Home() {
               <div className="mb-3">
                 <p className="text-[10px] text-slate-500 mb-1">{t('home.recent_locations')}</p>
                 <div className="flex flex-wrap gap-1">
-                  {savedLocations.map((loc, i) => {
+                  {savedLocations.map((loc) => {
                     const isEditing = editingTs === loc.ts
-                    const tone = i === 0
+                    const isSelected = location && Math.abs(loc.lat - location.lat) < 0.0001 && Math.abs(loc.lng - location.lng) < 0.0001
+                    const tone = isSelected
                       ? 'bg-emerald-100 border-emerald-400 text-emerald-700 hover:border-emerald-500 dark:bg-emerald-900/40 dark:border-emerald-700 dark:text-emerald-300 dark:hover:border-emerald-600'
                       : 'bg-slate-100 border-slate-300 text-slate-600 hover:border-slate-400 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-400 dark:hover:border-slate-500'
                     return (
@@ -373,34 +389,18 @@ export default function Home() {
             )}
 
             {location && (
-              <>
-                {/* Phone portrait: Calculate button sits right under recent locations */}
-                <div className="min-[750px]:hidden mb-4">
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3 text-center">
-                    <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
-                    {' '}{t('home.selected')}
-                  </p>
-                  <button
-                    onClick={handleStartCalculation}
-                    className="w-full px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition-colors font-semibold"
-                  >
-                    {t('home.start_button')} →
-                  </button>
-                </div>
-                {/* Desktop: Calculate button under search panel, beside the map */}
-                <div className="hidden min-[750px]:block">
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
-                    <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
-                    {' '}{t('home.selected')}
-                  </p>
-                  <button
-                    onClick={handleStartCalculation}
-                    className="px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition-colors font-semibold"
-                  >
-                    {t('home.start_button')} →
-                  </button>
-                </div>
-              </>
+              <div className="mb-4 min-[750px]:mb-0">
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-3 text-center min-[750px]:text-left">
+                  <span className="font-medium text-slate-900 dark:text-slate-200">{locationName || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
+                  {' '}{t('home.selected')}
+                </p>
+                <button
+                  onClick={handleStartCalculation}
+                  className="w-full min-w-fit px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition-colors font-semibold"
+                >
+                  {t('home.start_button')} →
+                </button>
+              </div>
             )}
           </div>
 
@@ -410,19 +410,10 @@ export default function Home() {
               <MapContainer
                 center={[48.5, 10]}
                 zoom={4}
-                className="h-full w-full"
+                className="h-full w-full relative"
                 ref={mapRef}
-                {...({
-                  gestureHandling: true,
-                  gestureHandlingOptions: {
-                    text: {
-                      touch: t('map.gesture_touch'),
-                      scroll: t('map.gesture_scroll'),
-                      scrollMac: t('map.gesture_scroll_mac'),
-                    },
-                  },
-                } as any)}
               >
+                <MapGestureHandling />
                 <TileLayer
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -498,7 +489,7 @@ export default function Home() {
         </div>
 
         {/* ── Footer ── */}
-      <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+      <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 sticky bottom-0 z-10">
         <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
           {version && <span className="px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400">v{version}</span>}
           <span>AGPL-3.0</span>

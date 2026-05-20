@@ -37,12 +37,11 @@ RUN npm run build
 # -----------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
-ARG VERSION=0.2.0
+ARG ENVIRONMENT=production
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    ENVIRONMENT=production \
-    VERSION=${VERSION}
+    ENVIRONMENT=${ENVIRONMENT}
 
 WORKDIR /app
 
@@ -63,6 +62,9 @@ RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Copy backend source.
 COPY backend/ ./
+
+# Copy root-level VERSION file for the _read_version() fallback.
+COPY VERSION ./VERSION
 
 # Copy the built frontend into the location main.py expects.
 COPY --from=frontend-build /app/dist ./frontend/dist

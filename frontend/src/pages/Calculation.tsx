@@ -1,78 +1,69 @@
-import React, {useCallback, useEffect, useState} from 'react'
-import {useTranslation} from 'react-i18next'
-import {Link, useNavigate, useParams, useSearchParams} from 'react-router-dom'
+import React, { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  type ApiResponse,
-  DEFAULT_FORM_DATA,
+  type FertilizerId,
+  FERTILIZER_PRESETS,
+  FERTILIZER_PRICES_DATE,
   formatDayLabel,
   type FormData,
   TAN_PRESETS,
   type VariableName,
   VARIANT_DEFS,
-  type VariantDef,
 } from './types'
 import OverviewChart from './OverviewChart'
 import DetailChart from './DetailChart'
 import SettingsMenu from '../components/SettingsMenu'
 import SiteIcon from '../components/SiteIcon'
 import ShareButton from '../components/ShareButton'
+import UnitToggle from '../components/UnitToggle'
+import CostSummaryCard from '../components/CostSummaryCard'
+import { useHiddenValues } from '../lib/useHiddenValues'
+import { useCalculation } from '../lib/useCalculation'
+import { useCiFetcher } from '../lib/useCiFetcher'
+import { useReverseGeocode } from '../lib/useReverseGeocode'
+import { variantLabel } from '../lib/variantLabel'
+import { deserializeForm, useFormUrlSync } from '../lib/formUrlSync'
+import { applyFixedChange, applyVariableChange } from '../lib/formCascade'
 
 const VARIABLE_OPTIONS_BEFORE_INCORP: VariableName[] = [
-  'app_mthd', 'app_time', 'man_dm',
+  'app_mthd',
+  'app_time',
+  'man_dm',
 ]
-const VARIABLE_OPTIONS_AFTER_INCORP: VariableName[] = [
-  'man_source', 'man_ph',
-]
+const VARIABLE_OPTIONS_AFTER_INCORP: VariableName[] = ['man_source', 'man_ph']
 
-const ALL_VARIABLES: VariableName[] = [
-  'app_mthd', 'app_time', 'man_dm', 'man_ph',
-  'incorp_depth', 'incorp_time', 'man_source',
-]
-
-function serializeForm(formData: FormData): Record<string, string> {
-  return {
-    variable: formData.variable,
-    tanApp: String(formData.tanApp),
-    appMthd: formData.appMthd,
-    manDm: String(formData.manDm),
-    manPh: String(formData.manPh),
-    manSource: formData.manSource,
-    appTime: String(formData.appTime),
-    incorpTime: String(formData.incorpTime),
-    incorpDepth: formData.incorpDepth,
-  }
+const VARIABLE_FORM_KEY: Record<VariableName, keyof FormData> = {
+  app_mthd: 'appMthd',
+  app_time: 'appTime',
+  man_dm: 'manDm',
+  man_ph: 'manPh',
+  man_source: 'manSource',
+  incorp_depth: 'incorpDepth',
+  incorp_time: 'incorpTime',
 }
 
-function deserializeForm(params: URLSearchParams): FormData {
-  const d = { ...DEFAULT_FORM_DATA }
-  if (params.has('variable') && ALL_VARIABLES.includes(params.get('variable') as VariableName))
-    d.variable = params.get('variable') as VariableName
-  if (params.has('tanApp')) d.tanApp = parseFloat(params.get('tanApp')!) || 60
-  if (params.has('appMthd') && ['bc', 'th', 'ts', 'os', 'cs'].includes(params.get('appMthd')!))
-    d.appMthd = params.get('appMthd')!
-  if (params.has('manDm')) d.manDm = parseFloat(params.get('manDm')!) || 6
-  if (params.has('manPh')) d.manPh = parseFloat(params.get('manPh')!) || 7.5
-  if (params.has('manSource') && ['cattle', 'pig'].includes(params.get('manSource')!))
-    d.manSource = params.get('manSource') as 'cattle' | 'pig'
-  if (params.has('appTime')) {
-    const h = parseInt(params.get('appTime')!, 10)
-    if (!isNaN(h) && h >= 0 && h <= 23) d.appTime = h
-  }
-  if (params.has('incorpTime')) d.incorpTime = parseFloat(params.get('incorpTime')!) || 0
-  if (params.has('incorpDepth') && ['none', 'shallow', 'deep'].includes(params.get('incorpDepth')!))
-    d.incorpDepth = params.get('incorpDepth') as FormData['incorpDepth']
-  return d
-}
-
-/** Format a variant value for display, using i18n translations. */
-function variantLabel(t: any, variable: VariableName, value: string | number, def?: VariantDef): string {
-  const key = def?.labelKey ?? String(value)
-  const main = t(`variants.${variable}.${key}`, { defaultValue: String(value) })
-  if (def?.hasCategory) {
-    const cat = t(`categories.${variable}.${key}`, { defaultValue: '' })
-    if (cat) return `${main} — ${cat}`
-  }
-  return main
+function DayNavButton({ direction, disabled, onClick }: {
+  direction: 'prev' | 'next'
+  disabled: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`p-2 ${direction === 'prev' ? 'mr-2' : 'ml-2'} rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors`}
+      aria-label={direction === 'prev' ? 'Previous day' : 'Next day'}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+        {direction === 'prev' ? (
+          <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+        ) : (
+          <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+        )}
+      </svg>
+    </button>
+  )
 }
 
 export default function Calculation() {
@@ -82,43 +73,61 @@ export default function Calculation() {
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedDay = day ? parseInt(day, 10) : null
 
-  const [locationName, setLocationName] = useState<string | null>(null)
-  const [locationLoading, setLocationLoading] = useState(true)
   const [alfam2Info, setAlfam2Info] = useState<{ version: string; parsSet: string } | null>(null)
-
-  const [data, setData] = useState<ApiResponse | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState<FormData>(() => deserializeForm(searchParams))
   const [showRadioHint, setShowRadioHint] = useState(false)
+  const [showFarmSize, setShowFarmSize] = useState<boolean>(() => !!formData.farmSizeHa)
+
+  // Sync URL search params with formData.
+  useFormUrlSync(formData, setSearchParams)
+
+  // Location name + main calculation + CI fetch — all extracted into hooks.
+  const { locationName, locationLoading } = useReverseGeocode(lat, lng)
+  const { data, setData, loading, error } = useCalculation({ lat, lng, formData })
+  const { ciLoadingValues, ciVisibleValues, handleCiClick } = useCiFetcher({
+    data,
+    setData,
+    lat,
+    lng,
+    formData,
+  })
+
+  // Shared hidden-variant state for the chart legend and cost summary.
+  const { hiddenValues, toggleValue } = useHiddenValues(
+    data?.variable ?? formData.variable,
+    data?.values ?? [],
+  )
 
   // Logo expansion: on hover (desktop) or when scrolled to top (touch devices).
   const [iconHover, setIconHover] = useState(false)
   const [atTop, setAtTop] = useState(true)
-  const [isTouch, setIsTouch] = useState(false)
+  const [hasScrollbar, setHasScrollbar] = useState(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    setIsTouch(
-      'ontouchstart' in window ||
-      navigator.maxTouchPoints > 0 ||
-      window.matchMedia('(pointer: coarse)').matches
-    )
-    const onScroll = () => setAtTop(window.scrollY <= 4)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
+    const update = () => {
+      setAtTop(window.scrollY <= 4)
+      setHasScrollbar(document.documentElement.scrollHeight > window.innerHeight + 4)
+    }
+    update()
+    window.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [data, loading, selectedDay, formData.variable, showFarmSize])
 
-  const iconExpanded = iconHover || (isTouch && atTop)
+  const iconExpanded = iconHover || !hasScrollbar || atTop
 
   useEffect(() => {
     const controller = new AbortController()
     fetch('/api/status', { signal: controller.signal })
       .then((res) => res.json())
       .then((d) => {
-        if (d.alfam2_version) setAlfam2Info({ version: d.alfam2_version, parsSet: d.alfam2_pars_set })
+        if (d.alfam2_version)
+          setAlfam2Info({ version: d.alfam2_version, parsSet: d.alfam2_pars_set })
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return
@@ -126,139 +135,20 @@ export default function Calculation() {
     return () => controller.abort()
   }, [])
 
-  useEffect(() => {
-    const p = new URLSearchParams(serializeForm(formData))
-    setSearchParams(p, { replace: true })
-  }, [formData, setSearchParams])
-
-  useEffect(() => {
-    if (!lat || !lng) return
-    const controller = new AbortController()
-    fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=${i18n.language}`,
-      { headers: { 'User-Agent': 'ammonitor/0.3' }, signal: controller.signal }
-    )
-      .then((res) => res.json())
-      .then((d) => {
-        const city =
-          d.address?.city ||
-          d.address?.town ||
-          d.address?.village ||
-          d.address?.municipality ||
-          d.address?.county
-        setLocationName(city || null)
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setLocationName(null)
-      })
-      .finally(() => setLocationLoading(false))
-    return () => controller.abort()
-  }, [lat, lng, i18n.language])
-
-  useEffect(() => {
-    if (!lat || !lng) return
-
-    const controller = new AbortController()
-
-    setLoading(true)
-    setError(null)
-
-    const browserTz =
-      Intl.DateTimeFormat().resolvedOptions().timeZone || 'auto'
-
-    const values = VARIANT_DEFS[formData.variable].map((d) => d.value)
-
-    fetch('/api/calculate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        lat: parseFloat(lat),
-        lng: parseFloat(lng),
-        variable: formData.variable,
-        values,
-        app_mthd: formData.appMthd,
-        man_dm: formData.manDm,
-        man_ph: formData.manPh,
-        man_source: formData.manSource,
-        app_time: formData.appTime,
-        incorp_depth: formData.incorpDepth,
-        incorp_time: formData.incorpTime,
-        timezone: browserTz,
-      }),
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const err = await res.text()
-          throw new Error(err || `Server responded with ${res.status}`)
-        }
-        return res.json()
-      })
-      .then((payload: ApiResponse) => {
-        setData(payload)
-        setLoading(false)
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        const message = err instanceof Error ? err.message : String(err)
-        console.error('Calculation error:', message)
-        setError(message)
-        setData(null)
-        setLoading(false)
-      })
-    return () => controller.abort()
-  }, [
-    lat,
-    lng,
-    formData.variable,
-    formData.appMthd,
-    formData.manDm,
-    formData.manPh,
-    formData.manSource,
-    formData.appTime,
-    formData.incorpDepth,
-    formData.incorpTime,
-  ])
-
   const handleFixedChange = useCallback(
-    (name: string, value: any) => {
-      setFormData((prev) => {
-        const next = { ...prev, [name]: value }
-        if (name === 'incorpDepth') {
-          if (value === 'none') {
-            next.incorpTime = 0
-            if (prev.variable === 'incorp_time' || prev.variable === 'incorp_depth') {
-              next.variable = 'app_mthd'
-            }
-          } else if (prev.incorpDepth === 'none') {
-            next.incorpTime = 4
-          }
-        }
-        if (name === 'incorpTime' && value > 0 && prev.incorpDepth === 'none') {
-          next.incorpDepth = 'shallow'
-        }
-        return next
-      })
+    <K extends keyof FormData>(name: K, value: FormData[K]) => {
+      setFormData((prev) => applyFixedChange(prev, name, value))
     },
     [],
   )
 
-  const handleVariableChange = useCallback(
-    (variable: VariableName) => {
-      setFormData((prev) => {
-        if (variable === 'incorp_time' && prev.incorpDepth === 'none') {
-          return { ...prev, variable, incorpDepth: 'shallow', incorpTime: 4 }
-        }
-        return { ...prev, variable }
-      })
-    },
-    [],
-  )
+  const handleVariableChange = useCallback((variable: VariableName) => {
+    setFormData((prev) => applyVariableChange(prev, variable))
+  }, [])
 
   const handleDayClick = useCallback(
-    (day: number) => {
-      navigate(`/calculate/${lat}/${lng}/${day}`)
+    (d: number) => {
+      navigate(`/calculate/${lat}/${lng}/${d}`)
     },
     [navigate, lat, lng],
   )
@@ -268,9 +158,12 @@ export default function Calculation() {
       ? data.days.find((d) => d.day === selectedDay)
       : null
 
-  // Build a readable subject for sharing: "Vienna" for overview, "Vienna — Apr 28" for detail.
+  // Build a readable subject for sharing: "Vienna" for overview,
+  // "Vienna — Apr 28" for detail.
   const shareSubject = (() => {
-    const loc = locationName ?? (lat && lng ? `${parseFloat(lat).toFixed(2)}, ${parseFloat(lng).toFixed(2)}` : null)
+    const loc =
+      locationName ??
+      (lat && lng ? `${parseFloat(lat).toFixed(2)}, ${parseFloat(lng).toFixed(2)}` : null)
     if (!loc) return null
     if (selectedDayData) {
       return `${loc} — ${formatDayLabel(selectedDayData.start, i18n.language)}`
@@ -285,21 +178,19 @@ export default function Calculation() {
   ) => {
     const defs = VARIANT_DEFS[variable]
     const isDisabled = formData.variable === variable
-    const isNumeric = (
-      variable === 'man_dm' || variable === 'man_ph' ||
-      variable === 'incorp_time' || variable === 'app_time'
-    )
+    const isNumeric =
+      variable === 'man_dm' ||
+      variable === 'man_ph' ||
+      variable === 'incorp_time' ||
+      variable === 'app_time'
 
     return (
       <select
         value={String(currentValue ?? '')}
         onChange={(e) => {
           const v = e.target.value
-          if (isNumeric) {
-            onChange(parseFloat(v))
-          } else {
-            onChange(v)
-          }
+          if (isNumeric) onChange(parseFloat(v))
+          else onChange(v)
         }}
         disabled={isDisabled}
         className={`w-full px-2 py-1.5 text-sm rounded-lg border focus:outline-none focus:border-indigo-500 ${
@@ -319,8 +210,8 @@ export default function Calculation() {
 
   return (
     <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
-      <div className="sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 py-3">
-        <div className="max-w-full md:max-w-6xl mx-auto flex items-center gap-2">
+      <div className={`sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 transition-[padding] duration-200 ease-out ${iconExpanded ? 'py-3' : 'py-1'}`}>
+        <div className="flex items-center gap-2">
           {selectedDay !== null ? (
             <button
               onClick={() => navigate(`/calculate/${lat}/${lng}`)}
@@ -350,6 +241,12 @@ export default function Calculation() {
             onMouseLeave={() => setIconHover(false)}
             onFocus={() => setIconHover(true)}
             onBlur={() => setIconHover(false)}
+            onClick={(e) => {
+              if (window.scrollY > 4) {
+                e.preventDefault()
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }
+            }}
           >
             <span className="inline-flex items-center gap-3 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
               <SiteIcon expanded={iconExpanded} />
@@ -362,8 +259,7 @@ export default function Calculation() {
           </div>
         </div>
       </div>
-      <div className="max-w-full md:max-w-6xl mx-auto p-4 md:p-6">
-
+      <div className="p-4 md:p-6">
         <div className="mb-4 md:mb-6">
           {locationLoading ? (
             <p className="text-slate-500 dark:text-slate-400">{t('calculation.loading_location')}</p>
@@ -380,9 +276,9 @@ export default function Calculation() {
           )}
         </div>
 
-        <div className="flex flex-col md:flex-row gap-4 md:gap-6">
-          {/* Form panel */}
-          <div className={`w-full md:w-1/3 lg:w-1/4 bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className={`flex flex-col lg:grid lg:gap-6 items-stretch lg:min-h-[470px] ${iconExpanded ? 'lg:grid-cols-[18rem_minmax(0,1fr)_16rem] lg:h-[calc(100vh-11rem)]' : 'lg:grid-cols-[18rem_minmax(0,1fr)_16rem] lg:h-[calc(100vh-10rem)]'}`}>
+          {/* Form panel — fixed width on lg+, full width below */}
+          <div className={`w-full lg:w-auto lg:shrink-0 lg:min-h-0 lg:overflow-y-auto bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
             <div className="flex items-center gap-2 mb-3">
               <h2 className="text-lg font-semibold">{t('calculation.parameters')}</h2>
               <div className="ml-auto relative">
@@ -408,7 +304,6 @@ export default function Calculation() {
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
-
               {/* TAN applied */}
               <div className="flex items-center gap-2">
                 <div className="w-4" />
@@ -436,31 +331,9 @@ export default function Calculation() {
                 <React.Fragment key={gi}>
                   {group.map((variable) => {
                     const isVariable = formData.variable === variable
-                    let currentValue: any = undefined
-                    let onChange: (value: any) => void = () => {}
-
-                    switch (variable) {
-                      case 'app_mthd':
-                        currentValue = formData.appMthd
-                        onChange = (v) => handleFixedChange('appMthd', v)
-                        break
-                      case 'app_time':
-                        currentValue = formData.appTime
-                        onChange = (v) => handleFixedChange('appTime', v)
-                        break
-                      case 'man_dm':
-                        currentValue = formData.manDm
-                        onChange = (v) => handleFixedChange('manDm', v)
-                        break
-                      case 'man_ph':
-                        currentValue = formData.manPh
-                        onChange = (v) => handleFixedChange('manPh', v)
-                        break
-                      case 'man_source':
-                        currentValue = formData.manSource
-                        onChange = (v) => handleFixedChange('manSource', v)
-                        break
-                    }
+                    const formKey = VARIABLE_FORM_KEY[variable]
+                    const currentValue = formData[formKey]
+                    const onChange = (v: any) => handleFixedChange(formKey, v)
 
                     return (
                       <div key={variable} className="flex items-center gap-2">
@@ -489,16 +362,9 @@ export default function Calculation() {
                       <div className="grid grid-cols-2 md:grid-cols-2 gap-2">
                         {(['incorp_depth', 'incorp_time'] as const).map((variable) => {
                           const isVariable = formData.variable === variable
-                          let currentValue: any
-                          let onChange: (value: any) => void
-
-                          if (variable === 'incorp_depth') {
-                            currentValue = formData.incorpDepth
-                            onChange = (v) => handleFixedChange('incorpDepth', v)
-                          } else {
-                            currentValue = formData.incorpTime
-                            onChange = (v) => handleFixedChange('incorpTime', v)
-                          }
+                          const formKey = VARIABLE_FORM_KEY[variable]
+                          const currentValue = formData[formKey]
+                          const onChange = (v: any) => handleFixedChange(formKey, v)
 
                           return (
                             <div key={variable} className="flex items-center gap-1">
@@ -529,20 +395,32 @@ export default function Calculation() {
             </div>
           </div>
 
-          {/* Chart panel */}
-          <div className="w-full md:w-2/3 lg:w-3/4 bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700">
-            <div className="flex items-center mb-3">
-              {selectedDay !== null && (
+          {/* Chart panel — grows to fill available space */}
+          <div className="w-full min-w-0 lg:min-h-0 bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700 flex flex-col">
+            {/* Up-arrow back-to-overview, only in detail view */}
+            {selectedDay !== null && (
+              <div className="flex justify-center mb-1">
                 <button
+                  onClick={() => navigate(`/calculate/${lat}/${lng}`)}
+                  className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                  aria-label={t('calculation.back_to_overview')}
+                  title={t('calculation.back_to_overview')}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                    <path fillRule="evenodd" d="M14.77 12.79a.75.75 0 01-1.06-.02L10 8.832l-3.71 3.938a.75.75 0 11-1.08-1.04l4.25-4.5a.75.75 0 011.08 0l4.25 4.5a.75.75 0 01-.02 1.06z" clipRule="evenodd" />
+                  </svg>
+                  {t('calculation.back_to_overview')}
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center mb-1">
+              {selectedDay !== null && (
+                <DayNavButton
+                  direction="prev"
                   onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.max(0, selectedDay - 1)}`, { replace: true })}
                   disabled={selectedDay <= 0}
-                  className="p-2 mr-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
-                  aria-label="Previous day"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                    <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
-                  </svg>
-                </button>
+                />
               )}
               <h2 className="text-lg font-semibold flex-1 text-center">
                 {selectedDay === null
@@ -552,23 +430,25 @@ export default function Calculation() {
                       variable: t(`variables.${formData.variable}`),
                     })}
               </h2>
-              {alfam2Info && selectedDay === null && (
-                <span className="text-[10px] text-slate-400 dark:text-slate-600 ml-2 shrink-0 hidden sm:inline">
-                  ALFAM2 v{alfam2Info.version} · {t('calculation.pars_set', { parsSet: alfam2Info.parsSet })}
-                </span>
-              )}
               {selectedDay !== null && (
-                <button
+                <DayNavButton
+                  direction="next"
                   onClick={() => navigate(`/calculate/${lat}/${lng}/${Math.min((data?.days.length ?? 1) - 1, selectedDay + 1)}`, { replace: true })}
                   disabled={!data || selectedDay >= data.days.length - 1}
-                  className="p-2 ml-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
-                  aria-label="Next day"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-                  </svg>
-                </button>
+                />
               )}
+            </div>
+            {alfam2Info && (
+              <p className="text-[9px] text-slate-400 dark:text-slate-600 text-center mb-2">
+                ALFAM2 v{alfam2Info.version} · {t('calculation.pars_set', { parsSet: alfam2Info.parsSet })}
+              </p>
+            )}
+
+            <div className="flex justify-end mb-2">
+              <UnitToggle
+                value={formData.chartUnit}
+                onChange={(u) => setFormData((prev) => ({ ...prev, chartUnit: u }))}
+              />
             </div>
 
             {error && (
@@ -577,7 +457,7 @@ export default function Calculation() {
               </div>
             )}
 
-            <div className="relative h-64 md:h-[calc(100vh-18rem)] min-h-[320px] flex flex-col">
+            <div className="relative flex-1 min-h-[280px] h-[60vh] md:h-[calc(100vh-17rem)] lg:h-auto flex flex-col">
               {loading && !data && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center">
                   <div className="flex flex-col items-center gap-3">
@@ -602,6 +482,9 @@ export default function Calculation() {
                   data={data}
                   formData={formData}
                   onDayClick={handleDayClick}
+                  hiddenValues={hiddenValues}
+                  toggleValue={toggleValue}
+                  ciVisibleValues={ciVisibleValues}
                 />
               )}
               {data && selectedDay !== null && (
@@ -609,9 +492,122 @@ export default function Calculation() {
                   data={data}
                   day={selectedDay}
                   formData={formData}
+                  hiddenValues={hiddenValues}
+                  toggleValue={toggleValue}
+                  onCiClick={handleCiClick}
+                  ciLoadingValues={ciLoadingValues}
+                  ciVisibleValues={ciVisibleValues}
                 />
               )}
             </div>
+          </div>
+
+          {/* Cost panel — basis inputs + summary; fixed width on lg+, stacks below chart on smaller screens */}
+          <div className="w-full lg:w-auto lg:shrink-0 lg:min-h-0 lg:overflow-y-auto bg-slate-50 dark:bg-slate-800 rounded-xl shadow-xl p-4 md:p-5 border border-slate-200 dark:border-slate-700 flex flex-col gap-4">
+            {/* Cost basis inputs */}
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">
+                {t('costs.basis_title')}
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
+                <div>
+                  <div className="flex items-baseline justify-between gap-2 mb-1">
+                    <label className="block text-xs text-slate-600 dark:text-slate-400">
+                      {t('fertilizers.label')}
+                    </label>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                      {t('costs.prices_as_of', { date: FERTILIZER_PRICES_DATE })}
+                    </span>
+                  </div>
+                  <select
+                    value={formData.fertilizer}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        fertilizer: e.target.value as FertilizerId,
+                      }))
+                    }
+                    className="w-full px-2 py-1.5 text-sm rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                  >
+                    {(Object.keys(FERTILIZER_PRESETS) as FertilizerId[]).map((id) => (
+                      <option key={id} value={id}>
+                        {t(`fertilizers.${id}`)}
+                        {id !== 'custom'
+                          ? ` (${FERTILIZER_PRESETS[id].eurPerKgN.toFixed(2)} ${t('units.eur_per_kg_n')})`
+                          : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {formData.fertilizer === 'custom' && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={formData.customEurPerKgN}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value)
+                          if (!isNaN(v) && v > 0) {
+                            setFormData((prev) => ({ ...prev, customEurPerKgN: v }))
+                          }
+                        }}
+                        className="flex-1 px-2 py-1.5 text-sm rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                      />
+                      <span className="text-xs text-slate-500">{t('units.eur_per_kg_n')}</span>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showFarmSize}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                        setShowFarmSize(next)
+                        if (!next) {
+                          setFormData((prev) => ({ ...prev, farmSizeHa: undefined }))
+                        } else if (!formData.farmSizeHa) {
+                          setFormData((prev) => ({ ...prev, farmSizeHa: 100 }))
+                        }
+                      }}
+                      className="accent-emerald-400"
+                    />
+                    {t('costs.calc_annual')}
+                  </label>
+                  {showFarmSize && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={formData.farmSizeHa ?? ''}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value)
+                          setFormData((prev) => ({
+                            ...prev,
+                            farmSizeHa: !isNaN(v) && v > 0 ? v : undefined,
+                          }))
+                        }}
+                        className="flex-1 px-2 py-1.5 text-sm rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                        placeholder={t('costs.farm_size')}
+                      />
+                      <span className="text-xs text-slate-500">{t('units.ha')}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Cost summary */}
+            {data && (
+              <CostSummaryCard
+                data={data}
+                formData={formData}
+                hiddenValues={hiddenValues}
+                selectedDay={selectedDay}
+              />
+            )}
           </div>
         </div>
       </div>
