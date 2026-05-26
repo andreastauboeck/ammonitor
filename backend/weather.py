@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import threading
 import time
 import urllib.parse
@@ -11,6 +12,34 @@ import urllib.request
 from threading import Lock
 
 logger = logging.getLogger("ammonitor.weather")
+
+# Commercial API key — optional. When set, used as fallback if the free
+# api.open-meteo.com endpoint fails (e.g. upstream outage).
+# Set via OPEN_METEO_API_KEY env var or a .env file in the repo root / backend dir.
+def _load_dotenv() -> None:
+    """Minimal .env loader — sets env vars that are not already set."""
+    from pathlib import Path
+    for candidate in (
+        Path(__file__).parent / ".env",          # backend/.env
+        Path(__file__).parent.parent / ".env",   # repo-root/.env
+    ):
+        if candidate.is_file():
+            with candidate.open() as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, _, v = line.partition("=")
+                    k = k.strip()
+                    v = v.strip().strip('"').strip("'")
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+            break
+
+_load_dotenv()
+
+_COMMERCIAL_API_KEY: str | None = os.getenv("OPEN_METEO_API_KEY") or None
+_COMMERCIAL_API_HOST = "customer-api.open-meteo.com"
 
 # How many days of hourly forecast we need:
 # For 8 days (day 0..7) each spanning 7 days (168 h), and an application
@@ -72,7 +101,22 @@ def fetch_weather(lat: float, lng: float, timezone_name: str = "auto") -> dict:
                 return data
 
     logger.info("weather.cache_miss key=%s", key)
-    data = _fetch_from_open_meteo(lat, lng, timezone_name)
+
+    try:
+        data = _fetch_from_open_meteo(lat, lng, timezone_name)
+    except RuntimeError as primary_err:
+        if not _COMMERCIAL_API_KEY:
+            raise
+        logger.warning(
+            "weather.free_api_fail err=%s — retrying with commercial API", primary_err
+        )
+        try:
+            data = _fetch_from_open_meteo(lat, lng, timezone_name, api_key=_COMMERCIAL_API_KEY)
+        except RuntimeError as fallback_err:
+            raise RuntimeError(
+                f"Weather unavailable on both free and commercial API. "
+                f"Free: {primary_err}. Commercial: {fallback_err}"
+            ) from primary_err
 
     with _cache_lock:
         _cache[key] = (time.time(), data)
@@ -80,7 +124,10 @@ def fetch_weather(lat: float, lng: float, timezone_name: str = "auto") -> dict:
     return data
 
 
-def _fetch_from_open_meteo(lat: float, lng: float, timezone_name: str) -> dict:
+def _fetch_from_open_meteo(
+    lat: float, lng: float, timezone_name: str, api_key: str | None = None
+) -> dict:
+    host = _COMMERCIAL_API_HOST if api_key else "api.open-meteo.com"
     params = {
         "latitude": f"{lat:.4f}",
         "longitude": f"{lng:.4f}",
@@ -89,19 +136,22 @@ def _fetch_from_open_meteo(lat: float, lng: float, timezone_name: str) -> dict:
         "forecast_days": str(FORECAST_DAYS),
         "timezone": timezone_name,
     }
-    url = "https://api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(params)
+    if api_key:
+        params["apikey"] = api_key
+    url = f"https://{host}/v1/forecast?" + urllib.parse.urlencode(params)
+    logger.debug("weather.fetch host=%s", host)
 
     req = urllib.request.Request(url, headers={"User-Agent": "ammonitor/0.2"})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             body = resp.read().decode("utf-8")
     except Exception as e:
-        raise RuntimeError(f"Open-Meteo request failed: {e}") from e
+        raise RuntimeError(f"Open-Meteo request failed ({host}): {e}") from e
 
     try:
         payload = json.loads(body)
     except json.JSONDecodeError as e:
-        raise RuntimeError(f"Invalid JSON from Open-Meteo: {e}") from e
+        raise RuntimeError(f"Invalid JSON from Open-Meteo ({host}): {e}") from e
 
     return _parse_om_response(payload)
 
