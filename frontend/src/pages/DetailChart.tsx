@@ -1,7 +1,6 @@
 import { Fragment, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  LineChart,
   Line,
   Area,
   ComposedChart,
@@ -23,7 +22,6 @@ import {
 import { useTheme } from '../theme/ThemeContext'
 import { getChartColors } from '../theme/chartColors'
 import {
-  formatEur,
   getEurPerKgN,
   pctToEurPerHa,
   pctToKgPerHa,
@@ -366,6 +364,10 @@ export default function DetailChart({
 
   /** Detail CI accessor: reads `${k}_lwr` + `${k}_ci_delta` from the row
    *  payload and returns absolute lwr/upr bounds. */
+  const emissionTicks = useMemo(() => [0, 0.25, 0.5, 0.75, 1].map(f => Math.round((detailMax || 0) * f * 10) / 10), [detailMax]);
+  const weatherLeftTicks = useMemo(() => [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(weatherLeftMax * f * 10) / 10), [weatherLeftMax]);
+  const weatherRightTicks = useMemo(() => [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(weatherRightMax * f * 10) / 10), [weatherRightMax]);
+
   const getCi = (entry: any) => {
     const row = entry?.payload
     if (!row) return null
@@ -409,24 +411,28 @@ export default function DetailChart({
               {t('charts.nh3_loss_pct')}
             </span>
           </div>
-          <div style={{ width: 30 }} className="h-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={detailData}
-                margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
-              >
-                <YAxis
-                  key={`detail-left-${detailMax}-${resolved}`}
-                  yAxisId="left"
-                  stroke={colors.axis}
-                  tick={{ fontSize: 9, fill: colors.axis }}
-                  domain={[0, detailMax]}
-                  tickFormatter={(v: number) => v.toFixed(0)}
-                  width={30}
-                />
-                <XAxis dataKey="hour" hide />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 relative h-full shrink-0 min-w-max pr-1">
+            <div className="invisible pointer-events-none" style={{ height: 0 }}>
+              {emissionTicks.map((tick, i) => (
+                <div key={i} className="text-[9px] whitespace-nowrap">{tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}</div>
+              ))}
+            </div>
+            {emissionTicks.map((tick, i) => {
+              if (tick === 0) return null;
+              return (
+                <div
+                  key={i}
+                  className="absolute right-0 text-[9px] whitespace-nowrap"
+                  style={{
+                    bottom: `calc(35px + ${i / (emissionTicks.length - 1)} * (100% - 45px))`,
+                    transform: "translateY(50%)",
+                    color: colors.axis
+                  }}
+                >
+                  {tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -435,7 +441,7 @@ export default function DetailChart({
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={detailData}
-                margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
+                margin={{ top: 10, right: 2, left: 2, bottom: 5 }}
                 onClick={isTouch ? handleChartClick : undefined}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
@@ -449,8 +455,8 @@ export default function DetailChart({
                   stroke={colors.axis}
                   tick={{ fontSize: 10, fill: colors.axis }}
                 />
-                <YAxis yAxisId="left" domain={[0, detailMax]} hide />
-                <YAxis yAxisId="right" orientation="right" domain={[0, detailMax]} hide />
+                <YAxis yAxisId="left" domain={[0, detailMax]} ticks={emissionTicks} interval={0} hide width={0} />
+                <YAxis yAxisId="right" orientation="right" domain={[0, detailMax]} ticks={emissionTicks} interval={0} hide width={0} />
                 <Tooltip
                   trigger={tooltipTrigger}
                   cursor={isTouch ? (touchTooltipActive ? { fill: colors.cursorFill } : false) : { fill: colors.cursorFill }}
@@ -544,37 +550,39 @@ export default function DetailChart({
               </ComposedChart>
             </ResponsiveContainer>
           </div>
+          {/* RIGHT Y-axis stub (sticky) */}
+          <div className="sticky right-0 bg-slate-50 dark:bg-slate-800 z-10 relative h-full shrink-0 min-w-max pl-1">
+            <div className="invisible pointer-events-none" style={{ height: 0 }}>
+              {emissionTicks.map((tick, i) => (
+                <div key={i} className="text-[9px] whitespace-nowrap">
+                  {chartUnit === 'kgha' ? pctToKgPerHa(tick, tanApp).toFixed(1) : new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(pctToEurPerHa(tick, tanApp, eurPerKgN))}
+                </div>
+              ))}
+            </div>
+            {emissionTicks.map((tick, i) => {
+              if (tick === 0) return null;
+              return (
+                <div 
+                  key={i} 
+                  className="absolute left-0 text-[9px] whitespace-nowrap"
+                  style={{ 
+                    bottom: `calc(35px + ${i / (emissionTicks.length - 1)} * (100% - 49px))`, 
+                    transform: "translateY(50%)", 
+                    color: colors.axis 
+                  }}
+                >
+                  {chartUnit === 'kgha' ? pctToKgPerHa(tick, tanApp).toFixed(1) : new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(pctToEurPerHa(tick, tanApp, eurPerKgN))}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="flex shrink-0 h-full">
-          <div style={{ width: chartUnit === 'eur' ? 44 : 36 }} className="h-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={detailData}
-                margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
-              >
-                <YAxis
-                  key={`detail-right-${detailMax}-${tanApp}-${eurPerKgN}-${chartUnit}-${resolved}`}
-                  yAxisId="right"
-                  orientation="right"
-                  stroke={colors.axis}
-                  tick={{ fontSize: 9, fill: colors.axis }}
-                  domain={[0, detailMax]}
-                  tickFormatter={(v: number) => {
-                    if (chartUnit === 'kgha') return pctToKgPerHa(v, tanApp).toFixed(1)
-                    return formatEur(pctToEurPerHa(v, tanApp, eurPerKgN), locale)
-                  }}
-                  width={chartUnit === 'eur' ? 44 : 36}
-                />
-                <XAxis dataKey="hour" hide />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-              {chartUnit === 'eur' ? t('charts.nh3_loss_eur') : t('charts.nh3_loss_kgha')}
-            </span>
-          </div>
+        {/* Right vertical label */}
+        <div className="flex items-center justify-center w-3 shrink-0 overflow-visible z-20">
+          <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+            {t('charts.rain_short')}
+          </span>
         </div>
       </div>
 
@@ -594,36 +602,45 @@ export default function DetailChart({
         </span>
       </div>
 
-      {/* === WEATHER CHART === */}
+            {/* === WEATHER CHART === */}
       <div className="flex-[2] min-h-0 flex">
-        <div className="flex shrink-0 h-full">
-          <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-              {t('charts.temp_wind_short')}
-            </span>
-          </div>
-          <div style={{ width: 30 }} className="h-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={detailData}
-                margin={{ top: 5, right: 0, left: 0, bottom: 30 }}
-              >
-                <YAxis
-                  key={`weather-left-${weatherLeftMax}-${resolved}`}
-                  yAxisId="left"
-                  stroke={colors.axis}
-                  tick={{ fontSize: 9, fill: colors.axis }}
-                  domain={[0, weatherLeftMax]}
-                  width={30}
-                />
-                <XAxis dataKey="hour" hide />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
+        {/* Left vertical label */}
+        <div className="flex items-center justify-center w-3 shrink-0 overflow-visible z-20">
+          <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+            {t('charts.temp_wind_short')}
+          </span>
         </div>
 
-        <div ref={weatherRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
-          <div className="h-full min-w-[400px]">
+        {/* Scrollable chart area */}
+        <div ref={weatherRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto flex">
+          {/* LEFT Y-axis stub (sticky) */}
+          <div className="sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 relative h-full shrink-0 min-w-max pr-1">
+            <div className="invisible pointer-events-none" style={{ height: 0 }}>
+              {weatherLeftTicks.map((tick, i) => (
+                <div key={i} className="text-[9px] whitespace-nowrap">
+                  {tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}
+                </div>
+              ))}
+            </div>
+            {weatherLeftTicks.map((tick, i) => {
+              if (tick === 0) return null;
+              return (
+                <div 
+                  key={i} 
+                  className="absolute right-0 text-[9px] whitespace-nowrap"
+                  style={{ 
+                    bottom: `calc(35px + ${i / (weatherLeftTicks.length - 1)} * (100% - 45px))`,
+                    transform: "translateY(50%)",
+                    color: colors.axis 
+                  }}
+                >
+                  {tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="h-full min-w-[400px] flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={detailData}
@@ -641,8 +658,8 @@ export default function DetailChart({
                   stroke={colors.axis}
                   tick={{ fontSize: 10, fill: colors.axis }}
                 />
-                <YAxis yAxisId="left" domain={[0, weatherLeftMax]} hide />
-                <YAxis yAxisId="right" orientation="right" domain={[0, weatherRightMax]} hide />
+                <YAxis yAxisId="left" domain={[0, weatherLeftMax]} ticks={weatherLeftTicks} interval={0} hide width={0} />
+                <YAxis yAxisId="right" orientation="right" domain={[0, weatherRightMax]} ticks={weatherRightTicks} interval={0} hide width={0} />
                 <Tooltip
                   trigger={tooltipTrigger}
                   cursor={isTouch ? (touchTooltipActive ? { fill: colors.cursorFill } : false) : { fill: colors.cursorFill }}
@@ -695,24 +712,28 @@ export default function DetailChart({
         </div>
 
         <div className="flex shrink-0 h-full">
-          <div style={{ width: 30 }} className="h-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={detailData}
-                margin={{ top: 5, right: 0, left: 0, bottom: 30 }}
-              >
-                <YAxis
-                  key={`weather-right-${weatherRightMax}-${resolved}`}
-                  yAxisId="right"
-                  orientation="right"
-                  stroke={colors.axis}
-                  tick={{ fontSize: 9, fill: colors.axis }}
-                  domain={[0, weatherRightMax]}
-                  width={30}
-                />
-                <XAxis dataKey="hour" hide />
-              </ComposedChart>
-            </ResponsiveContainer>
+          <div className="sticky right-0 bg-slate-50 dark:bg-slate-800 z-10 relative h-full shrink-0 min-w-max pl-1">
+            <div className="invisible pointer-events-none" style={{ height: 0 }}>
+              {weatherRightTicks.map((tick, i) => (
+                <div key={i} className="text-[9px] whitespace-nowrap">{tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}</div>
+              ))}
+            </div>
+            {weatherRightTicks.map((tick, i) => {
+              if (tick === 0) return null;
+              return (
+                <div
+                  key={i}
+                  className="absolute left-0 text-[9px] whitespace-nowrap"
+                  style={{
+                    bottom: `calc(35px + ${i / (weatherRightTicks.length - 1)} * (100% - 45px))`,
+                    transform: "translateY(50%)",
+                    color: colors.axis
+                  }}
+                >
+                  {tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}
+                </div>
+              );
+            })}
           </div>
           <div className="flex items-center justify-center w-3">
             <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>

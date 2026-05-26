@@ -13,15 +13,23 @@ from threading import Lock
 
 logger = logging.getLogger("ammonitor.weather")
 
-# Commercial API key — optional. When set, used as fallback if the free
-# api.open-meteo.com endpoint fails (e.g. upstream outage).
-# Set via OPEN_METEO_API_KEY env var or a .env file in the repo root / backend dir.
-def _load_dotenv() -> None:
-    """Minimal .env loader — sets env vars that are not already set."""
+# Commercial API key — optional fallback when the free API fails.
+#
+# Production (Fly.io): set once with `fly secrets set OPEN_METEO_API_KEY=<key>`.
+#   Fly injects it as a real env var before the process starts, so os.getenv()
+#   picks it up with no extra code.
+#
+# Local dev: either `export OPEN_METEO_API_KEY=<key>` in your shell before
+#   starting uvicorn, or put it in the repo-root .env file (gitignored) and
+#   the minimal loader below will read it for you.
+def _load_dotenv_once() -> None:
+    """Local-dev convenience: read .env file if the key isn't already set."""
+    if os.getenv("OPEN_METEO_API_KEY"):
+        return  # already set (Fly.io secret or shell export) — nothing to do
     from pathlib import Path
     for candidate in (
-        Path(__file__).parent / ".env",          # backend/.env
-        Path(__file__).parent.parent / ".env",   # repo-root/.env
+        Path(__file__).parent / ".env",         # backend/.env
+        Path(__file__).parent.parent / ".env",  # repo-root/.env  ← default
     ):
         if candidate.is_file():
             with candidate.open() as f:
@@ -30,13 +38,12 @@ def _load_dotenv() -> None:
                     if not line or line.startswith("#") or "=" not in line:
                         continue
                     k, _, v = line.partition("=")
-                    k = k.strip()
-                    v = v.strip().strip('"').strip("'")
+                    k, v = k.strip(), v.strip().strip('"').strip("'")
                     if k and k not in os.environ:
                         os.environ[k] = v
             break
 
-_load_dotenv()
+_load_dotenv_once()
 
 _COMMERCIAL_API_KEY: str | None = os.getenv("OPEN_METEO_API_KEY") or None
 _COMMERCIAL_API_HOST = "customer-api.open-meteo.com"
