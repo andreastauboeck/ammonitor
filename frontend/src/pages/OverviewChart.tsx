@@ -31,6 +31,8 @@ import { ciKey, valueToKey } from '../lib/rechartsKeys'
 import { variantLabel } from '../lib/variantLabel'
 import { useChartScroll } from '../lib/useChartScroll'
 import { useTouchTooltip } from '../lib/useTouchTooltip'
+import { EMISSION_TICK_OFFSET, WEATHER_TICK_OFFSET } from '../lib/chartTickCalc'
+import YAxisTickOverlay from '../components/YAxisTickOverlay'
 import EmissionTooltip from './charts/EmissionTooltip'
 import WeatherTooltip from './charts/WeatherTooltip'
 import VariantLegend from './charts/VariantLegend'
@@ -245,42 +247,23 @@ export default function OverviewChart({
       />
 
       <div className="flex-[3] min-h-0 flex">
-                {/* Left vertical label */}
+        {/* Left vertical label */}
         <div className="flex items-center justify-center w-3 shrink-0 overflow-visible z-20">
           <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
             {t('charts.nh3_loss_pct')}
           </span>
         </div>
 
-                {/* Scrollable chart area */}
+        {/* Scrollable chart area */}
         <div ref={emissionRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto flex">
-          {/* LEFT Y-axis stub (sticky) */}
-          <div className="sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 relative h-full shrink-0 min-w-max pr-1">
-            <div className="invisible pointer-events-none" style={{ height: 0 }}>
-              {emissionTicks.map((tick, i) => (
-                <div key={i} className="text-[9px] whitespace-nowrap">
-                  {tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}
-                </div>
-              ))}
-            </div>
-            {emissionTicks.map((tick, i) => {
-              if (tick === 0) return null;
-              return (
-                <div 
-                  key={i} 
-                  className="absolute right-0 text-[9px] whitespace-nowrap"
-                  style={{ 
-                    bottom: `calc(35px + ${i / (emissionTicks.length - 1)} * (100% - 45px))`,
-                    transform: "translateY(50%)",
-                    color: colors.axis 
-                  }}
-                >
-                  {tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}
-                </div>
-              );
-            })}
-          </div>
-          
+          <YAxisTickOverlay
+            side="left"
+            ticks={emissionTicks}
+            formatTick={(v) => v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}
+            offset={EMISSION_TICK_OFFSET}
+            color={colors.axis}
+          />
+
           <div className="h-full min-w-[600px] flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -340,32 +323,13 @@ export default function OverviewChart({
               </BarChart>
             </ResponsiveContainer>
           </div>
-          {/* RIGHT Y-axis stub (sticky) */}
-          <div className="sticky right-0 bg-slate-50 dark:bg-slate-800 z-10 relative h-full shrink-0 min-w-max pl-1">
-            <div className="invisible pointer-events-none" style={{ height: 0 }}>
-              {emissionTicks.map((tick, i) => (
-                <div key={i} className="text-[9px] whitespace-nowrap">
-                  {chartUnit === 'kgha' ? pctToKgPerHa(tick, tanApp).toFixed(1) : new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(pctToEurPerHa(tick, tanApp, eurPerKgN))}
-                </div>
-              ))}
-            </div>
-            {emissionTicks.map((tick, i) => {
-              if (tick === 0) return null;
-              return (
-                <div 
-                  key={i} 
-                  className="absolute left-0 text-[9px] whitespace-nowrap"
-                  style={{ 
-                    bottom: `calc(35px + ${i / (emissionTicks.length - 1)} * (100% - 45px))`,
-                    transform: "translateY(50%)",
-                    color: colors.axis 
-                  }}
-                >
-                  {chartUnit === 'kgha' ? pctToKgPerHa(tick, tanApp).toFixed(1) : new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(pctToEurPerHa(tick, tanApp, eurPerKgN))}
-                </div>
-              );
-            })}
-          </div>
+          <YAxisTickOverlay
+            side="right"
+            ticks={emissionTicks}
+            formatTick={(v) => chartUnit === 'kgha' ? pctToKgPerHa(v, tanApp).toFixed(1) : new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(pctToEurPerHa(v, tanApp, eurPerKgN))}
+            offset={EMISSION_TICK_OFFSET}
+            color={colors.axis}
+          />
         </div>
 
         {/* Right vertical label */}
@@ -392,7 +356,7 @@ export default function OverviewChart({
         </span>
       </div>
 
-            {/* Weather chart */}
+      {/* Weather chart */}
       <div className="flex-[2] min-h-0 flex">
         {/* Left vertical label */}
         <div className="flex items-center justify-center w-3 shrink-0 overflow-visible z-20">
@@ -403,32 +367,13 @@ export default function OverviewChart({
 
         {/* Scrollable chart area */}
         <div ref={weatherRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto flex">
-          {/* LEFT Y-axis stub (sticky) */}
-          <div className="sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 relative h-full shrink-0 min-w-max pr-1">
-            <div className="invisible pointer-events-none" style={{ height: 0 }}>
-              {weatherLeftTicks.map((tick, i) => (
-                <div key={i} className="text-[9px] whitespace-nowrap">
-                  {tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}
-                </div>
-              ))}
-            </div>
-            {weatherLeftTicks.map((tick, i) => {
-              if (tick === 0) return null;
-              return (
-                <div 
-                  key={i} 
-                  className="absolute right-0 text-[9px] whitespace-nowrap"
-                  style={{ 
-                    bottom: `calc(35px + ${i / (weatherLeftTicks.length - 1)} * (100% - 40px))`,
-                    transform: "translateY(50%)",
-                    color: colors.axis 
-                  }}
-                >
-                  {tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}
-                </div>
-              );
-            })}
-          </div>
+          <YAxisTickOverlay
+            side="left"
+            ticks={weatherLeftTicks}
+            formatTick={(v) => v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}
+            offset={WEATHER_TICK_OFFSET}
+            color={colors.axis}
+          />
           
           <div className="h-full min-w-[600px] flex-1">
             <ResponsiveContainer width="100%" height="100%">
@@ -547,32 +492,13 @@ export default function OverviewChart({
               </ComposedChart>
             </ResponsiveContainer>
           </div>
-          {/* RIGHT Y-axis stub (sticky) */}
-          <div className="sticky right-0 bg-slate-50 dark:bg-slate-800 z-10 relative h-full shrink-0 min-w-max pl-1">
-            <div className="invisible pointer-events-none" style={{ height: 0 }}>
-              {weatherRightTicks.map((tick, i) => (
-                <div key={i} className="text-[9px] whitespace-nowrap">
-                  {tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}
-                </div>
-              ))}
-            </div>
-            {weatherRightTicks.map((tick, i) => {
-              if (tick === 0) return null;
-              return (
-                <div 
-                  key={i} 
-                  className="absolute left-0 text-[9px] whitespace-nowrap"
-                  style={{ 
-                    bottom: `calc(35px + ${i / (weatherRightTicks.length - 1)} * (100% - 40px))`,
-                    transform: "translateY(50%)",
-                    color: colors.axis 
-                  }}
-                >
-                  {tick % 1 === 0 ? tick.toFixed(0) : tick.toFixed(1)}
-                </div>
-              );
-            })}
-          </div>
+          <YAxisTickOverlay
+            side="right"
+            ticks={weatherRightTicks}
+            formatTick={(v) => v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}
+            offset={WEATHER_TICK_OFFSET}
+            color={colors.axis}
+          />
         </div>
 
         {/* Right vertical label */}
