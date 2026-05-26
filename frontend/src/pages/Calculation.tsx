@@ -16,6 +16,7 @@ import DetailChart from './DetailChart'
 import SettingsMenu from '../components/SettingsMenu'
 import SiteIcon from '../components/SiteIcon'
 import ShareButton from '../components/ShareButton'
+import InfoPopover from '../components/InfoPopover'
 import UnitToggle from '../components/UnitToggle'
 import CostSummaryCard from '../components/CostSummaryCard'
 import { useHiddenValues } from '../lib/useHiddenValues'
@@ -308,7 +309,10 @@ export default function Calculation() {
               <div className="flex items-center gap-2">
                 <div className="w-4" />
                 <div className="flex-1 min-w-0">
-                  <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('calculation.tan_applied')}</label>
+                  <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                    {t('calculation.tan_applied')}
+                    <InfoPopover content={t('calculation.tan_applied_info')} />
+                  </label>
                   <div className="flex items-center gap-1.5">
                     <select
                       value={formData.tanApp}

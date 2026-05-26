@@ -89,6 +89,7 @@
     "compare": "vergleichen",
     "compare_hint": "Wählen Sie einen Optionsschalter, um Varianten dieses Parameters zu vergleichen",
     "tan_applied": "TAN-Gabe",
+    "tan_applied_info": "Gesamt-Ammonium-Nitrogen (TAN) ist der Anteil des Stickstoffs in der Gülle, der sofort für NH₃-Verflüchtigung verfügbar ist. Der NH₃-Verlust im Diagramm ist ein Prozentsatz der ausgebrachten TAN-Menge.",
     "pars_set": "param set {{parsSet}}",
     "varied": "variiert",
     "incorporation": "Einarbeitung",
