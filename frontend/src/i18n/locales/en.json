@@ -152,11 +152,11 @@
       "20": "20:00"
     },
     "man_dm": {
-      "2": "2%",
       "4": "4%",
-      "6": "6%",
-      "10": "10%",
-      "14": "14%"
+      "5.5": "5.5%",
+      "7": "7%",
+      "8.5": "8.5%",
+      "10": "10%"
     },
     "man_ph": {
       "5.5": "5.5",
@@ -192,11 +192,11 @@
       "20": "Evening"
     },
     "man_dm": {
-      "2": "Very liquid",
-      "4": "Pig typical",
-      "6": "Cattle typical",
-      "10": "Thick",
-      "14": "Near limit"
+      "4": "Very liquid",
+      "5.5": "Pig typical",
+      "7": "Cattle typical",
+      "8.5": "Thick",
+      "10": "Very thick"
     },
     "man_ph": {
       "5.5": "Acidified",

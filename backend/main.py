@@ -130,7 +130,7 @@ AppMethod = Literal["bc", "th", "ts", "os", "cs"]
 VARIANT_VALUES: dict[str, list[Any]] = {
     "app_mthd": ["bc", "th", "ts", "os", "cs"],
     "app_time": [6, 8, 12, 16, 20],
-    "man_dm": [2, 4, 6, 10, 14],
+    "man_dm": [4, 5.5, 7, 8.5, 10],
     "man_ph": [5.5, 6.5, 7.5, 8.0, 9.0],
     "man_source": ["cattle", "pig"],
     "incorp_depth": ["none", "shallow", "deep"],
@@ -145,7 +145,7 @@ CALCULATE_EXAMPLE = {
     "values": ["bc", "th", "ts", "os", "cs"],
     "app_mthd": "th",
     "app_time": 12,
-    "man_dm": 6.0,
+    "man_dm": 7.0,
     "man_ph": 7.5,
     "man_source": "cattle",
     "incorp_depth": "none",
@@ -187,7 +187,7 @@ class CalculateInput(BaseModel):
         description="Application time as hour of day (0-23)"
     )
     man_dm: float = Field(
-        6.0, ge=1.0, le=15.0, description="Manure dry matter (% w/w)"
+        7.0, ge=1.0, le=15.0, description="Manure dry matter (% w/w)"
     )
     man_ph: float = Field(
         7.5, ge=5.5, le=9.0, description="Manure pH"
@@ -230,7 +230,7 @@ class CalculateCiInput(BaseModel):
     )
     app_mthd: AppMethod = Field("th", description="Application method")
     app_time: int = Field(12, ge=0, le=23)
-    man_dm: float = Field(6.0, ge=1.0, le=15.0)
+    man_dm: float = Field(7.0, ge=1.0, le=15.0)
     man_ph: float = Field(7.5, ge=5.5, le=9.0)
     man_source: ManureSource = Field("cattle")
     incorp_depth: IncorpDepth = Field("none")

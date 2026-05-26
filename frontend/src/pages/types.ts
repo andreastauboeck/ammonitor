@@ -107,11 +107,11 @@ export const VARIANT_DEFS: Record<VariableName, VariantDef[]> = {
     { value: 20, hasCategory: true },
   ],
   'man_dm': [
-    { value: 2, hasCategory: true },
     { value: 4, hasCategory: true },
-    { value: 6, hasCategory: true },
+    { value: 5.5, hasCategory: true },
+    { value: 7, hasCategory: true },
+    { value: 8.5, hasCategory: true },
     { value: 10, hasCategory: true },
-    { value: 14, hasCategory: true },
   ],
   'man_ph': [
     { value: 5.5, hasCategory: true },
@@ -160,7 +160,7 @@ export const DEFAULT_FORM_DATA: FormData = {
   tanApp: 60,
   variable: 'app_mthd',
   appMthd: 'bc',
-  manDm: 6,
+  manDm: 7,
   manPh: 7.5,
   manSource: 'cattle',
   appTime: 12,

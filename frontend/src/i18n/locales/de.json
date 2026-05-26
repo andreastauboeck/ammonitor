@@ -152,11 +152,11 @@
       "20": "20:00"
     },
     "man_dm": {
-      "2": "2 %",
       "4": "4 %",
-      "6": "6 %",
-      "10": "10 %",
-      "14": "14 %"
+      "5.5": "5,5 %",
+      "7": "7 %",
+      "8.5": "8,5 %",
+      "10": "10 %"
     },
     "man_ph": {
       "5.5": "5,5",
@@ -192,11 +192,11 @@
       "20": "Abends"
     },
     "man_dm": {
-      "2": "Sehr flüssig",
-      "4": "Schwein typisch",
-      "6": "Rind typisch",
-      "10": "Dick",
-      "14": "Nahe Grenze"
+      "4": "Sehr flüssig",
+      "5.5": "Schwein typisch",
+      "7": "Rind typisch",
+      "8.5": "Dick",
+      "10": "Sehr dick"
     },
     "man_ph": {
       "5.5": "Angesäuert",

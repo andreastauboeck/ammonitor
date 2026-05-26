@@ -39,7 +39,7 @@ def run_alfam2(
     variable: VariableName,
     values: list[Any],
     app_mthd: str = "th",
-    man_dm: float = 6.0,
+    man_dm: float = 7.0,
     man_ph: float = 7.5,
     man_source: str = "cattle",
     application_hour: int = 12,
@@ -80,7 +80,7 @@ def run_alfam2(
 
 def run_alfam2_single(
     app_mthd: str = "th",
-    man_dm: float = 6.0,
+    man_dm: float = 7.0,
     man_ph: float = 7.5,
     man_source: str = "cattle",
     application_hour: int = 12,
