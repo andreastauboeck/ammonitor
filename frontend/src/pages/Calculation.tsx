@@ -457,7 +457,7 @@ export default function Calculation() {
               </div>
             )}
 
-            <div className="relative flex-1 min-h-[280px] h-[60vh] md:h-[calc(100vh-17rem)] lg:h-auto flex flex-col">
+            <div className="relative flex-1 min-h-[470px] h-[70vh] md:h-[calc(100vh-17rem)] lg:h-auto flex flex-col">
               {loading && !data && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center">
                   <div className="flex flex-col items-center gap-3">
@@ -509,7 +509,7 @@ export default function Calculation() {
               <div className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">
                 {t('costs.basis_title')}
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 <div>
                   <div className="flex items-baseline justify-between gap-2 mb-1">
                     <label className="block text-xs text-slate-600 dark:text-slate-400">

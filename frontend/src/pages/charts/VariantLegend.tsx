@@ -54,7 +54,7 @@ export default function VariantLegend({
 }: VariantLegendProps) {
   const { t } = useTranslation()
   return (
-    <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-700 dark:text-slate-300 mb-1 shrink-0">
+    <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-700 dark:text-slate-300 mb-2 shrink-0">
       {values.map((value, i) => {
         const valueKey = String(value)
         const hidden = hiddenValues.has(valueKey)

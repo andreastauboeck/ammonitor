@@ -104,9 +104,9 @@ export default function CostSummaryCard({ data, formData, hiddenValues, selected
               {t('costs.saving_by', { variant: bestLabel })}
             </div>
             {summary.savingPerYear !== undefined && summary.farmSizeHa && (
-              <div className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
-                = {formatEur(summary.savingPerYear, locale)}/{t('costs.per_year_short')}
-                {' '}({summary.farmSizeHa} {t('units.ha')})
+              <div className="flex flex-wrap items-baseline gap-x-1 text-xs text-emerald-700 dark:text-emerald-400 mt-1">
+                <span>= {formatEur(summary.savingPerYear, locale)}/{t('costs.per_year_short')}</span>
+                <span className="text-emerald-600/70 dark:text-emerald-400/70">({summary.farmSizeHa} {t('units.ha')})</span>
               </div>
             )}
           </>

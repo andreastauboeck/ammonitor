@@ -23,7 +23,6 @@ import {
 import { useTheme } from '../theme/ThemeContext'
 import { getChartColors } from '../theme/chartColors'
 import {
-  formatEur,
   getEurPerKgN,
   pctToEurPerHa,
   pctToKgPerHa,
@@ -32,6 +31,8 @@ import { ciKey, valueToKey } from '../lib/rechartsKeys'
 import { variantLabel } from '../lib/variantLabel'
 import { useChartScroll } from '../lib/useChartScroll'
 import { useTouchTooltip } from '../lib/useTouchTooltip'
+import { EMISSION_TICK_OFFSET, WEATHER_TICK_OFFSET } from '../lib/chartTickCalc'
+import YAxisTickOverlay from '../components/YAxisTickOverlay'
 import EmissionTooltip from './charts/EmissionTooltip'
 import WeatherTooltip from './charts/WeatherTooltip'
 import VariantLegend from './charts/VariantLegend'
@@ -216,6 +217,10 @@ export default function OverviewChart({
 
   /** Overview CI accessor: reads `${k}_ci` (ErrorBar delta tuple) and
    *  reconstructs absolute bounds from the variant's own value. */
+  const emissionTicks = useMemo(() => [0, 0.25, 0.5, 0.75, 1].map(f => Math.round((overviewMax || 0) * f * 10) / 10), [overviewMax]);
+  const weatherLeftTicks = useMemo(() => [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(weatherLeftMax * f * 10) / 10), [weatherLeftMax]);
+  const weatherRightTicks = useMemo(() => [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(weatherRightMax * f * 10) / 10), [weatherRightMax]);
+
   const getCi = (entry: any) => {
     // Recharts passes the variant payload; we look up the matching `_ci`
     // entry in the same tooltip payload via the shared row data.
@@ -242,49 +247,36 @@ export default function OverviewChart({
       />
 
       <div className="flex-[3] min-h-0 flex">
-        {/* Left fixed column: vertical label + left y-axis */}
-        <div className="flex shrink-0 h-full">
-          <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-              {t('charts.nh3_loss_pct')}
-            </span>
-          </div>
-          <div style={{ width: 30 }} className="h-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={overviewData}
-                margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
-              >
-                <YAxis
-                  key={`left-${overviewMax}-${resolved}`}
-                  yAxisId="left"
-                  stroke={colors.axis}
-                  tick={{ fontSize: 9, fill: colors.axis }}
-                  domain={[0, overviewMax]}
-                  tickFormatter={(v: number) => v.toFixed(0)}
-                  width={30}
-                />
-                <XAxis dataKey="dayLabel" hide />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        {/* Left vertical label */}
+        <div className="flex items-center justify-center w-3 shrink-0 overflow-visible z-20">
+          <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+            {t('charts.nh3_loss_pct')}
+          </span>
         </div>
 
-        {/* Middle scrollable column */}
-        <div ref={emissionRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
-          <div className="h-full min-w-[600px]">
+        {/* Scrollable chart area */}
+        <div ref={emissionRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto flex">
+          <YAxisTickOverlay
+            side="left"
+            ticks={emissionTicks}
+            formatTick={(v) => v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}
+            offset={EMISSION_TICK_OFFSET}
+            color={colors.axis}
+          />
+
+          <div className="h-full min-w-[600px] flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={overviewData}
-                margin={{ top: 10, right: 0, left: 0, bottom: 5 }}
+                margin={{ top: 10, right: 2, left: 2, bottom: 5 }}
                 barCategoryGap="10%"
                 barGap={2}
                 onClick={handleEmissionClick}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
                 <XAxis dataKey="dayLabel" stroke={colors.axis} tick={{ fontSize: 11, fill: colors.axis }} />
-                <YAxis yAxisId="left" domain={[0, overviewMax]} hide />
-                <YAxis yAxisId="right" orientation="right" domain={[0, overviewMax]} hide />
+                <YAxis yAxisId="left" domain={[0, overviewMax]} ticks={emissionTicks} interval={0} hide width={0} />
+                <YAxis yAxisId="right" orientation="right" domain={[0, overviewMax]} ticks={emissionTicks} interval={0} hide width={0} />
                 <Tooltip
                   trigger="hover"
                   content={
@@ -331,38 +323,20 @@ export default function OverviewChart({
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <YAxisTickOverlay
+            side="right"
+            ticks={emissionTicks}
+            formatTick={(v) => chartUnit === 'kgha' ? pctToKgPerHa(v, tanApp).toFixed(1) : new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(pctToEurPerHa(v, tanApp, eurPerKgN))}
+            offset={EMISSION_TICK_OFFSET}
+            color={colors.axis}
+          />
         </div>
 
-        {/* Right fixed column: right y-axis + vertical label (secondary unit) */}
-        <div className="flex shrink-0 h-full">
-          <div style={{ width: chartUnit === 'eur' ? 44 : 36 }} className="h-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={overviewData}
-                margin={{ top: 10, right: 0, left: 0, bottom: 30 }}
-              >
-                <YAxis
-                  key={`right-${overviewMax}-${tanApp}-${eurPerKgN}-${chartUnit}-${resolved}`}
-                  yAxisId="right"
-                  orientation="right"
-                  stroke={colors.axis}
-                  tick={{ fontSize: 9, fill: colors.axis }}
-                  domain={[0, overviewMax]}
-                  tickFormatter={(v: number) => {
-                    if (chartUnit === 'kgha') return pctToKgPerHa(v, tanApp).toFixed(1)
-                    return formatEur(pctToEurPerHa(v, tanApp, eurPerKgN), locale)
-                  }}
-                  width={chartUnit === 'eur' ? 44 : 36}
-                />
-                <XAxis dataKey="dayLabel" hide />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-              {chartUnit === 'eur' ? t('charts.nh3_loss_eur') : t('charts.nh3_loss_kgha')}
-            </span>
-          </div>
+        {/* Right vertical label */}
+        <div className="flex items-center justify-center w-3 shrink-0 overflow-visible z-20">
+          <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+            {chartUnit === 'eur' ? t('charts.nh3_loss_eur') : t('charts.nh3_loss_kgha')}
+          </span>
         </div>
       </div>
 
@@ -384,34 +358,24 @@ export default function OverviewChart({
 
       {/* Weather chart */}
       <div className="flex-[2] min-h-0 flex">
-        <div className="flex shrink-0 h-full">
-          <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-              {t('charts.temp_wind_short')}
-            </span>
-          </div>
-          <div style={{ width: 30 }} className="h-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={weatherOverviewData}
-                margin={{ top: 5, right: 0, left: 0, bottom: 30 }}
-              >
-                <YAxis
-                  key={`left-w-${weatherLeftMax}-${resolved}`}
-                  yAxisId="left"
-                  stroke={colors.axis}
-                  tick={{ fontSize: 9, fill: colors.axis }}
-                  domain={[0, weatherLeftMax]}
-                  width={30}
-                />
-                <XAxis dataKey="dayLabel" hide />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
+        {/* Left vertical label */}
+        <div className="flex items-center justify-center w-3 shrink-0 overflow-visible z-20">
+          <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+            {t('charts.temp_wind_short')}
+          </span>
         </div>
 
-        <div ref={weatherRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto">
-          <div className="h-full min-w-[600px]">
+        {/* Scrollable chart area */}
+        <div ref={weatherRef} onScroll={syncScroll('weather')} className="flex-1 min-w-0 overflow-x-auto flex">
+          <YAxisTickOverlay
+            side="left"
+            ticks={weatherLeftTicks}
+            formatTick={(v) => v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}
+            offset={WEATHER_TICK_OFFSET}
+            color={colors.axis}
+          />
+          
+          <div className="h-full min-w-[600px] flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={weatherOverviewData}
@@ -428,8 +392,8 @@ export default function OverviewChart({
                   stroke={colors.axis}
                   tick={{ fontSize: 11, fill: colors.axis }}
                 />
-                <YAxis yAxisId="left" domain={[0, weatherLeftMax]} hide />
-                <YAxis yAxisId="right" orientation="right" domain={[0, weatherRightMax]} hide />
+                <YAxis yAxisId="left" domain={[0, weatherLeftMax]} ticks={weatherLeftTicks} interval={0} hide width={0} />
+                <YAxis yAxisId="right" orientation="right" domain={[0, weatherRightMax]} ticks={weatherRightTicks} interval={0} hide width={0} />
                 <Tooltip
                   trigger="hover"
                   content={
@@ -528,33 +492,20 @@ export default function OverviewChart({
               </ComposedChart>
             </ResponsiveContainer>
           </div>
+          <YAxisTickOverlay
+            side="right"
+            ticks={weatherRightTicks}
+            formatTick={(v) => v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}
+            offset={WEATHER_TICK_OFFSET}
+            color={colors.axis}
+          />
         </div>
 
-        <div className="flex shrink-0 h-full">
-          <div style={{ width: 30 }} className="h-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={weatherOverviewData}
-                margin={{ top: 5, right: 0, left: 0, bottom: 30 }}
-              >
-                <YAxis
-                  key={`right-w-${weatherRightMax}-${resolved}`}
-                  yAxisId="right"
-                  orientation="right"
-                  stroke={colors.axis}
-                  tick={{ fontSize: 9, fill: colors.axis }}
-                  domain={[0, weatherRightMax]}
-                  width={30}
-                />
-                <XAxis dataKey="dayLabel" hide />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-              {t('charts.rain_short')}
-            </span>
-          </div>
+        {/* Right vertical label */}
+        <div className="flex items-center justify-center w-3 shrink-0 overflow-visible z-20">
+          <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+            {t('charts.rain_short')}
+          </span>
         </div>
       </div>
 
