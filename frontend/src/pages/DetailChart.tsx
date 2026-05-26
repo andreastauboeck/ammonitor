@@ -405,12 +405,16 @@ export default function DetailChart({
 
       {/* === EMISSION CHART === */}
       <div className="flex-[3] min-h-0 flex">
-        <div className="flex shrink-0 h-full">
-          <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-              {t('charts.nh3_loss_pct')}
-            </span>
-          </div>
+        {/* Left vertical label */}
+        <div className="flex items-center justify-center w-3 shrink-0 overflow-visible z-20">
+          <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+            {t('charts.nh3_loss_pct')}
+          </span>
+        </div>
+
+        {/* Scrollable chart area */}
+        <div ref={emissionRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto flex">
+          {/* LEFT Y-axis stub (sticky) */}
           <div className="sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 relative h-full shrink-0 min-w-max pr-1">
             <div className="invisible pointer-events-none" style={{ height: 0 }}>
               {emissionTicks.map((tick, i) => (
@@ -434,10 +438,8 @@ export default function DetailChart({
               );
             })}
           </div>
-        </div>
 
-        <div ref={emissionRef} onScroll={syncScroll('emission')} className="flex-1 min-w-0 overflow-x-auto">
-          <div className="h-full min-w-[400px]">
+          <div className="h-full min-w-[400px] flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={detailData}
@@ -566,9 +568,9 @@ export default function DetailChart({
                   key={i} 
                   className="absolute left-0 text-[9px] whitespace-nowrap"
                   style={{ 
-                    bottom: `calc(35px + ${i / (emissionTicks.length - 1)} * (100% - 49px))`, 
-                    transform: "translateY(50%)", 
-                    color: colors.axis 
+                    bottom: `calc(35px + ${i / (emissionTicks.length - 1)} * (100% - 45px))`,
+                    transform: "translateY(50%)",
+                    color: colors.axis
                   }}
                 >
                   {chartUnit === 'kgha' ? pctToKgPerHa(tick, tanApp).toFixed(1) : new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(pctToEurPerHa(tick, tanApp, eurPerKgN))}
@@ -581,7 +583,7 @@ export default function DetailChart({
         {/* Right vertical label */}
         <div className="flex items-center justify-center w-3 shrink-0 overflow-visible z-20">
           <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-            {t('charts.rain_short')}
+            {chartUnit === 'eur' ? t('charts.nh3_loss_eur') : t('charts.nh3_loss_kgha')}
           </span>
         </div>
       </div>
@@ -629,7 +631,7 @@ export default function DetailChart({
                   key={i} 
                   className="absolute right-0 text-[9px] whitespace-nowrap"
                   style={{ 
-                    bottom: `calc(35px + ${i / (weatherLeftTicks.length - 1)} * (100% - 45px))`,
+                    bottom: `calc(35px + ${i / (weatherLeftTicks.length - 1)} * (100% - 40px))`,
                     transform: "translateY(50%)",
                     color: colors.axis 
                   }}
@@ -709,9 +711,7 @@ export default function DetailChart({
               </ComposedChart>
             </ResponsiveContainer>
           </div>
-        </div>
-
-        <div className="flex shrink-0 h-full">
+          {/* RIGHT Y-axis stub (sticky) */}
           <div className="sticky right-0 bg-slate-50 dark:bg-slate-800 z-10 relative h-full shrink-0 min-w-max pl-1">
             <div className="invisible pointer-events-none" style={{ height: 0 }}>
               {weatherRightTicks.map((tick, i) => (
@@ -725,7 +725,7 @@ export default function DetailChart({
                   key={i}
                   className="absolute left-0 text-[9px] whitespace-nowrap"
                   style={{
-                    bottom: `calc(35px + ${i / (weatherRightTicks.length - 1)} * (100% - 45px))`,
+                    bottom: `calc(35px + ${i / (weatherRightTicks.length - 1)} * (100% - 40px))`,
                     transform: "translateY(50%)",
                     color: colors.axis
                   }}
@@ -735,11 +735,13 @@ export default function DetailChart({
               );
             })}
           </div>
-          <div className="flex items-center justify-center w-3">
-            <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-              {t('charts.rain_short')}
-            </span>
-          </div>
+        </div>
+
+        {/* Right vertical label */}
+        <div className="flex items-center justify-center w-3 shrink-0 overflow-visible z-20">
+          <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+            {t('charts.rain_short')}
+          </span>
         </div>
       </div>
     </>
